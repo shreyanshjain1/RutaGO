@@ -704,6 +704,48 @@ app.get("/plan", async (req, res) => {
   }
 });
 
+
+// Clean API aliases for the mobile/PWA client. The original /mvp routes remain
+// supported so existing demos do not break, while /api gives the project
+// a production-ready route namespace.
+app.get("/api/stops/nearest", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(307, `/mvp/stops/nearest${qs ? `?${qs}` : ""}`);
+});
+
+app.get("/api/routes/:routeId/overlay", (req, res) => {
+  res.redirect(307, `/mvp/routes/${encodeURIComponent(req.params.routeId)}/overlay`);
+});
+
+app.get("/api/vehicles", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(307, `/mvp/vehicles${qs ? `?${qs}` : ""}`);
+});
+
+app.get("/api/routes/:routeId/vehicles", (req, res) => {
+  res.redirect(307, `/mvp/routes/${encodeURIComponent(req.params.routeId)}/vehicles`);
+});
+
+app.get("/api/search", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(307, `/mvp/search${qs ? `?${qs}` : ""}`);
+});
+
+app.get("/api/routes", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(307, `/routes${qs ? `?${qs}` : ""}`);
+});
+
+app.get("/api/stops", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(307, `/stops${qs ? `?${qs}` : ""}`);
+});
+
+app.get("/api/plan", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(307, `/plan${qs ? `?${qs}` : ""}`);
+});
+
 app.get("/mvp/demo-notification", (req, res) => {
   res.json({
     message: "Approaching destination stop",
@@ -712,7 +754,7 @@ app.get("/mvp/demo-notification", (req, res) => {
 });
 
 app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/health") || req.path.startsWith("/routes") || req.path.startsWith("/stops") || req.path.startsWith("/plan") || req.path.startsWith("/mvp/")) {
+  if (req.path.startsWith("/health") || req.path.startsWith("/routes") || req.path.startsWith("/stops") || req.path.startsWith("/plan") || req.path.startsWith("/mvp/") || req.path.startsWith("/api/")) {
     return next();
   }
   return res.sendFile(path.join(publicDir, "index.html"));

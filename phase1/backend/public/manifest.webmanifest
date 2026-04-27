@@ -1,0 +1,19 @@
+{
+  "name": "RutaGO - UP Diliman Jeepney Guide",
+  "short_name": "RutaGO",
+  "description": "Find UP Diliman jeepney routes, nearby stops, and stop reminders.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#55c8e9",
+  "theme_color": "#ffbd4a",
+  "icons": [
+    {
+      "src": "./icons/rutago-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -2,14 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RutaGO MVP</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffbd4a" />
+    <meta name="description" content="RutaGO helps commuters find UP Diliman jeepney routes, nearby stops, and stop reminders." />
+    <title>RutaGO</title>
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/rutago-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/rutago-icon.svg" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -19,70 +23,184 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <header class="app-header">
-        <div>
-          <p class="eyebrow">RutaGO Phase 2</p>
-          <h1>MVP Commuter App</h1>
+    <div id="installToast" class="install-toast" hidden>
+      <div>
+        <strong>Install RutaGO</strong>
+        <span>Add this app to your home screen for quick access.</span>
+      </div>
+      <button id="installBtn" class="mini-btn">Install</button>
+      <button id="dismissInstallBtn" class="icon-btn" aria-label="Dismiss install prompt">×</button>
+    </div>
+
+    <section id="splashScreen" class="screen screen-splash is-active" aria-label="RutaGO splash screen">
+      <div class="sky-cloud cloud-one"></div>
+      <div class="sky-cloud cloud-two"></div>
+      <div class="logo-badge jumbo-logo">RUTA GO</div>
+      <div class="road-scene">
+        <span class="road-marker marker-one"></span>
+        <span class="road-marker marker-two"></span>
+        <span class="jeepney" aria-hidden="true">🚌</span>
+      </div>
+      <button id="startAppBtn" class="primary-pill splash-cta">Start Commuting</button>
+    </section>
+
+    <section id="loginScreen" class="screen screen-login" aria-label="RutaGO login screen">
+      <div class="sky-cloud cloud-one"></div>
+      <div class="sky-cloud cloud-two"></div>
+      <div class="logo-badge login-logo">RUTA GO</div>
+      <form id="loginForm" class="login-card">
+        <label class="login-field">
+          <span class="field-icon">👤</span>
+          <input id="nameInput" type="text" autocomplete="name" placeholder="Name" />
+        </label>
+        <label class="login-field">
+          <span class="field-icon">🔒</span>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Password" />
+        </label>
+        <div class="login-actions">
+          <button type="button" id="signupBtn" class="auth-chip">SIGN UP</button>
+          <button type="submit" class="auth-chip auth-chip-dark">LOGIN</button>
         </div>
-        <button id="locateBtn" class="btn secondary">Use My Location</button>
+      </form>
+      <div class="road-scene login-road">
+        <span class="road-marker marker-one"></span>
+        <span class="road-marker marker-two"></span>
+        <span class="jeepney" aria-hidden="true">🚌</span>
+      </div>
+    </section>
+
+    <main id="appScreen" class="app-screen" aria-label="RutaGO main app">
+      <header class="top-bar">
+        <button id="menuBtn" class="menu-button" aria-label="Open menu">☰</button>
+        <div class="brand-wrap">
+          <div class="brand-title">RUTA GO</div>
+          <div class="brand-subtitle">UP Diliman Jeepney Guide</div>
+        </div>
+        <button id="locateBtn" class="location-button" aria-label="Use my location">📍</button>
       </header>
 
-      <section class="controls">
-        <div class="field-group">
-          <label for="originInput">Origin (lat,lng)</label>
-          <div class="inline">
-            <input id="originInput" placeholder="14.6535,121.049" />
-            <button id="setOriginBtn" class="btn">Set on Map</button>
-          </div>
+      <aside id="drawer" class="drawer" aria-hidden="true">
+        <div class="drawer-head">
+          <div class="logo-badge drawer-logo">RUTA GO</div>
+          <button id="closeDrawerBtn" class="icon-btn" aria-label="Close menu">×</button>
         </div>
-
-        <div class="field-group">
-          <label for="destinationInput">Destination (lat,lng)</label>
-          <div class="inline">
-            <input id="destinationInput" placeholder="14.5995,120.984" />
-            <button id="setDestinationBtn" class="btn">Set on Map</button>
-          </div>
+        <button class="drawer-link" data-panel="plannerPanel">🗺️ Route Finder</button>
+        <button class="drawer-link" data-panel="routesPanel">🚍 Route Cards</button>
+        <button class="drawer-link" data-panel="stopsPanel">📌 Stop List</button>
+        <button class="drawer-link" data-panel="reminderPanel">🔔 Stop Reminder</button>
+        <button class="drawer-link" data-panel="statusPanel">⚙️ App Status</button>
+        <div class="drawer-note">
+          Tap the map to set origin/destination, then find a jeepney route.
         </div>
+      </aside>
+      <div id="drawerOverlay" class="drawer-overlay"></div>
 
-        <div class="actions">
-          <button id="searchBtn" class="btn primary">Find Jeep Route</button>
-          <button id="nearestBtn" class="btn secondary">Nearest Stop (300m)</button>
-        </div>
-      </section>
-
-      <section class="map-panel">
+      <section class="map-shell">
         <div id="map"></div>
-        <div class="map-legend" id="mapLegend">
-          <div class="legend-row"><span class="legend-swatch origin"></span><span>Origin</span></div>
-          <div class="legend-row"><span class="legend-swatch destination"></span><span>Destination</span></div>
-          <div class="legend-row"><span class="legend-swatch direct"></span><span>Direct jeep route</span></div>
-          <div class="legend-row"><span class="legend-swatch transfer"></span><span>Transfer segment</span></div>
-        </div>
+        <div class="map-crosshair" aria-hidden="true">+</div>
+        <button id="centerUpBtn" class="map-chip map-chip-top">Center UPD</button>
+        <div id="mapModeChip" class="map-chip map-chip-bottom">Tap Origin or Destination below</div>
       </section>
 
-      <section class="results">
-        <h2>Transit Navigation</h2>
-        <div id="summary" class="card muted">Enter origin and destination, then run route search.</div>
-        <div id="notificationBanner" class="notice-banner" hidden></div>
+      <section class="bottom-sheet">
+        <div class="sheet-handle"></div>
 
-        <h3>Direct Jeep Routes</h3>
-        <div id="directResults" class="results-grid"></div>
+        <section id="plannerPanel" class="panel is-active">
+          <div class="panel-title-row">
+            <div>
+              <p class="panel-kicker">Plan your commute</p>
+              <h1>Find Routes</h1>
+            </div>
+            <span id="networkStatus" class="status-pill">Checking…</span>
+          </div>
 
-        <h3>Transfer Suggestions</h3>
-        <div id="transferResults" class="results-grid"></div>
+          <div class="quick-actions">
+            <button id="setOriginBtn" class="outline-pill">Set Origin</button>
+            <button id="setDestinationBtn" class="outline-pill">Set Destination</button>
+            <button id="nearestBtn" class="outline-pill">Nearest Stops</button>
+          </div>
 
-        <h3>Nearest Stops</h3>
-        <div id="nearestResults" class="results-grid"></div>
+          <div class="coordinate-grid">
+            <label>
+              <span>Start</span>
+              <input id="originInput" placeholder="14.653500,121.049000" />
+            </label>
+            <label>
+              <span>End</span>
+              <input id="destinationInput" placeholder="14.599500,120.984000" />
+            </label>
+          </div>
 
-        <h3>Live Vehicle Hooks</h3>
-        <div class="actions">
-          <button id="vehiclesBtn" class="btn secondary">Refresh Vehicle Feed</button>
-        </div>
-        <div id="vehicleSummary" class="card muted">Search a route first, then refresh vehicle snapshots for the leading route.</div>
-        <div id="vehicleResults" class="results-grid"></div>
+          <div class="search-grid">
+            <label>
+              <span>Search destination / stop</span>
+              <input id="stopSearchInput" placeholder="Try Miranda Hall, U.P. Town Center..." />
+            </label>
+            <button id="searchStopBtn" class="mini-btn">Search Stop</button>
+          </div>
+
+          <button id="searchBtn" class="primary-pill full-width">Find Routes</button>
+          <div id="summary" class="message-card">Set your origin and destination to find jeepney route options.</div>
+          <div id="notificationBanner" class="reminder-card" hidden></div>
+        </section>
+
+        <section id="routesPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Available options</p>
+              <h2>Route Cards</h2>
+            </div>
+            <button id="vehiclesBtn" class="mini-btn">Live Feed</button>
+          </div>
+          <div class="section-label">Direct Jeep Routes</div>
+          <div id="directResults" class="route-stack"></div>
+          <div class="section-label">Transfer Suggestions</div>
+          <div id="transferResults" class="route-stack"></div>
+          <div class="section-label">Vehicle Hooks</div>
+          <div id="vehicleSummary" class="message-card small">Search a route first, then refresh vehicle snapshots.</div>
+          <div id="vehicleResults" class="route-stack"></div>
+        </section>
+
+        <section id="stopsPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Nearby and searched stops</p>
+              <h2>Stop List</h2>
+            </div>
+            <button id="refreshStopsBtn" class="mini-btn">Refresh</button>
+          </div>
+          <div id="nearestResults" class="route-stack"></div>
+          <div id="stopSearchResults" class="route-stack"></div>
+        </section>
+
+        <section id="reminderPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Destination alerts</p>
+              <h2>Add Stop Reminder</h2>
+            </div>
+            <span id="reminderStatus" class="status-pill">No reminder</span>
+          </div>
+          <div id="selectedReminderCard" class="message-card">Select a route card or stop, then tap Add Stop Reminder.</div>
+          <button id="addReminderBtn" class="primary-pill full-width">Add Stop Reminder</button>
+          <button id="endRouteBtn" class="secondary-pill full-width">End Route</button>
+        </section>
+
+        <section id="statusPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Developer status</p>
+              <h2>App Status</h2>
+            </div>
+            <button id="reloadHealthBtn" class="mini-btn">Reload</button>
+          </div>
+          <div id="healthCard" class="message-card">Checking backend health...</div>
+          <div class="message-card small">
+            PWA install, offline shell cache, GPS fallback, browser notification fallback, GTFS route APIs, and synthetic vehicle hooks are included in this upgrade.
+          </div>
+        </section>
       </section>
-    </div>
+    </main>
 
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
