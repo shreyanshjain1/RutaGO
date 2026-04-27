@@ -1,0 +1,16 @@
+{
+  "name": "rutago-phase1-backend",
+  "version": "1.0.0",
+  "description": "Phase 1 backend for GTFS route and stop APIs",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  }
+}

@@ -1,0 +1,5 @@
+backend/node_modules/
+otp/otp.jar
+backend/.env
+data/prepared/*.pbf
+data/prepared/graph.obj

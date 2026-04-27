@@ -1,0 +1,186 @@
+:root {
+  --bg: #f4f1ea;
+  --bg-accent: #e4d9c9;
+  --text: #1f1f22;
+  --muted: #5c5f66;
+  --card: #fffbf3;
+  --primary: #075985;
+  --primary-ink: #f8fafc;
+  --secondary: #dcf1ff;
+  --danger: #b42318;
+  --border: #d8cdbd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 0% 0%, #fff8e5 0%, transparent 45%),
+    radial-gradient(circle at 100% 100%, #d9f3ff 0%, transparent 35%),
+    var(--bg);
+}
+
+.app-shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+}
+
+h2 {
+  margin-top: 10px;
+  font-size: 22px;
+}
+
+h3 {
+  margin-top: 14px;
+  margin-bottom: 8px;
+  font-size: 17px;
+}
+
+.controls,
+.results {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.controls {
+  margin-bottom: 14px;
+}
+
+.field-group {
+  margin-bottom: 12px;
+}
+
+.field-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+  font-family: "IBM Plex Mono", monospace;
+  background: #fff;
+}
+
+.btn {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.btn.secondary {
+  background: var(--secondary);
+  color: #083344;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+#map {
+  height: min(48vh, 420px);
+  min-height: 280px;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: #fff;
+}
+
+.card.muted {
+  color: var(--muted);
+  background: #f5f9fc;
+}
+
+.card .route {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.card .meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (min-width: 760px) {
+  .results-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
