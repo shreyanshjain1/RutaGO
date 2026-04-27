@@ -1,0 +1,8 @@
+{
+  "appId": "com.rutago.mobile",
+  "appName": "RutaGO",
+  "webDir": "../backend/public",
+  "server": {
+    "androidScheme": "https"
+  }
+}

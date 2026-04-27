@@ -56,6 +56,8 @@ Run schema:
 Creates tables:
 - `routes`
 - `stops`
+- `trips`
+- `stop_times`
 - `vehicles`
 - `users`
 - `reports`
@@ -76,5 +78,26 @@ APIs:
 - `GET /plan?from=lat,lng&to=lat,lng`
 
 Notes:
-- `/plan` proxies OTP at `http://localhost:8080` by default.
-- Override with `OTP_BASE_URL` in `.env`.
+- `/plan` now prefers transit itineraries (`TRANSIT,WALK`) and falls back to walk when transit is unavailable in OTP.
+- Override OTP behavior with `OTP_TRANSIT_PREFERRED`, `OTP_ALLOW_WALK_FALLBACK`, and `OTP_MAX_WALK_METERS` in `.env`.
+- Set `USE_POSTGRES=true` and `DATABASE_URL=postgresql://...` to load transit search data from PostgreSQL instead of CSV memory.
+- Set `AUTO_IMPORT_GTFS_TO_DB=true` to seed GTFS tables (`routes`, `stops`, `trips`, `stop_times`) from prepared CSVs on startup.
+
+## Step 5: Package for Android and iOS (Capacitor)
+
+```powershell
+Set-Location c:\Users\sugz1\Downloads\manila\phase1\mobile
+npm install
+npm run add:android
+npm run add:ios
+npm run sync
+```
+
+Then open native IDEs:
+
+```powershell
+npm run open:android
+npm run open:ios
+```
+
+Before packaging, set the backend URL in `phase1/backend/public/rutago.config.js`.

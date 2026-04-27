@@ -80,15 +80,19 @@ psql -U postgres -d rutago -c "\dt public.*"
 
 ## Update Backend Configuration
 
-Once PostgreSQL is ready, update [phase1/backend/src/server.js](server.js):
+Once PostgreSQL is ready, set backend environment variables in `phase1/backend/.env`:
 
-```javascript
-// Current: CSV-based (in-memory)
-// Future: Replace with database queries
-// - routes → SELECT * FROM routes
-// - stops → SELECT * FROM stops  
-// - Uses PostGIS for geography-based queries
+```env
+USE_POSTGRES=true
+POSTGRES_REQUIRED=true
+AUTO_IMPORT_GTFS_TO_DB=true
+DATABASE_URL=postgresql://postgres:<password>@localhost:5432/rutago
 ```
+
+When enabled:
+- The backend loads `routes`, `stops`, `trips`, and `stop_times` from PostgreSQL.
+- Optional auto-seed imports GTFS CSV files from `phase1/data/prepared` at startup.
+- Route search and nearest-stop logic use DB-backed data already loaded in memory.
 
 ---
 

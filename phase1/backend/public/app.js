@@ -8,21 +8,67 @@ const originInput = document.getElementById("originInput");
 const destinationInput = document.getElementById("destinationInput");
 const searchBtn = document.getElementById("searchBtn");
 const nearestBtn = document.getElementById("nearestBtn");
+const vehiclesBtn = document.getElementById("vehiclesBtn");
 const locateBtn = document.getElementById("locateBtn");
 const setOriginBtn = document.getElementById("setOriginBtn");
 const setDestinationBtn = document.getElementById("setDestinationBtn");
 const directResults = document.getElementById("directResults");
 const transferResults = document.getElementById("transferResults");
 const nearestResults = document.getElementById("nearestResults");
+const vehicleResults = document.getElementById("vehicleResults");
+const vehicleSummary = document.getElementById("vehicleSummary");
 const summary = document.getElementById("summary");
+const notificationBanner = document.getElementById("notificationBanner");
+
+const configuredApiBase = (window.RUTAGO_CONFIG && window.RUTAGO_CONFIG.apiBaseUrl) || "";
+const storedApiBase = window.localStorage.getItem("rutago_api_base") || "";
+const API_BASE_URL = (configuredApiBase || storedApiBase).replace(/\/+$/, "");
+
+function apiUrl(path) {
+  if (!API_BASE_URL) return path;
+  return `${API_BASE_URL}${path}`;
+}
+
+async function apiFetch(path, options) {
+  return fetch(apiUrl(path), options);
+}
 
 let originMarker = null;
 let destinationMarker = null;
 let nearestLayer = L.layerGroup().addTo(map);
 let routeLayer = L.layerGroup().addTo(map);
+let vehicleLayer = L.layerGroup().addTo(map);
 let mapClickMode = null;
 let destinationWatchId = null;
 let destinationTarget = null;
+let activeRouteId = null;
+
+const routeColors = ["#075985", "#0f766e", "#7c3aed", "#b45309", "#be123c"];
+
+function clearNotificationBanner() {
+  if (!notificationBanner) return;
+  notificationBanner.hidden = true;
+  notificationBanner.className = "notice-banner";
+  notificationBanner.textContent = "";
+}
+
+function showNotificationBanner(title, body, tone = "warning") {
+  if (!notificationBanner) return;
+
+  notificationBanner.hidden = false;
+  notificationBanner.className = `notice-banner ${tone}`;
+  notificationBanner.innerHTML = "";
+
+  const titleEl = document.createElement("div");
+  titleEl.className = "notice-title";
+  titleEl.textContent = title;
+
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "notice-body";
+  bodyEl.textContent = body;
+
+  notificationBanner.append(titleEl, bodyEl);
+}
 
 function parseLatLng(value) {
   if (!value) return null;
@@ -81,6 +127,7 @@ function clearResults() {
   directResults.innerHTML = "";
   transferResults.innerHTML = "";
   nearestResults.innerHTML = "";
+  vehicleResults.innerHTML = "";
 }
 
 function showEmpty(container, text) {
@@ -90,25 +137,116 @@ function showEmpty(container, text) {
   container.appendChild(div);
 }
 
+function setVehicleSummary(text) {
+  if (vehicleSummary) {
+    vehicleSummary.textContent = text;
+  }
+}
+
+function vehicleBadgeTone(lastSeenAt) {
+  const ageMs = Date.now() - new Date(lastSeenAt).getTime();
+  if (ageMs < 120000) return "active";
+  if (ageMs < 300000) return "stale";
+  return "";
+}
+
+function vehicleCardHtml(vehicle) {
+  const badgeTone = vehicleBadgeTone(vehicle.last_seen_at);
+  return `
+    <div class="route">${vehicle.route_name}</div>
+    <div class="meta">Vehicle: ${vehicle.vehicle_code}</div>
+    <div class="meta">Position: ${vehicle.lat.toFixed(6)}, ${vehicle.lon.toFixed(6)}</div>
+    <div class="meta">Heading: ${vehicle.heading}° | Speed: ${vehicle.speed_kph.toFixed(1)} kph</div>
+    <div class="meta">Next stop: ${vehicle.next_stop}</div>
+    <div class="vehicle-badge ${badgeTone}">Last seen ${new Date(vehicle.last_seen_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+  `;
+}
+
+function addVehicleMarker(vehicle, color) {
+  const marker = L.circleMarker([vehicle.lat, vehicle.lon], {
+    radius: 8,
+    color,
+    weight: 2,
+    fillColor: color,
+    fillOpacity: 0.9,
+  }).bindPopup(
+    `${vehicle.route_name}<br>${vehicle.vehicle_code}<br>${vehicle.next_stop}<br>${vehicle.speed_kph.toFixed(1)} kph`
+  );
+  marker.addTo(vehicleLayer);
+}
+
+async function loadVehicleFeed(routeId = null) {
+  vehicleLayer.clearLayers();
+  vehicleResults.innerHTML = "";
+
+  const query = routeId ? `?route_id=${encodeURIComponent(routeId)}&limit=3` : "?limit=8";
+  const resp = await apiFetch(`/mvp/vehicles${query}`);
+  if (!resp.ok) {
+    setVehicleSummary("Vehicle feed is unavailable right now.");
+    showEmpty(vehicleResults, "No vehicle snapshots available.");
+    return;
+  }
+
+  const body = await resp.json();
+  const vehicles = body.data || [];
+  if (!vehicles.length) {
+    setVehicleSummary("No active vehicle snapshots were returned for the selected route.");
+    showEmpty(vehicleResults, "No vehicle snapshots available.");
+    return;
+  }
+
+  setVehicleSummary(
+    routeId
+      ? `Tracking ${vehicles.length} synthetic vehicle snapshot(s) for the top route.`
+      : `Tracking ${vehicles.length} synthetic vehicle snapshot(s) from the live hook.`
+  );
+
+  for (const [index, vehicle] of vehicles.entries()) {
+    const color = routeColor(index);
+    const el = card(vehicleCardHtml(vehicle));
+    el.classList.add("vehicle-card");
+    vehicleResults.appendChild(el);
+    addVehicleMarker(vehicle, color);
+  }
+
+  if (vehicleLayer.getLayers().length) {
+    map.fitBounds(vehicleLayer.getBounds(), { padding: [25, 25] });
+  }
+}
+
 async function loadOverlay(routeId, color) {
-  const resp = await fetch(`/mvp/routes/${encodeURIComponent(routeId)}/overlay`);
+  const resp = await apiFetch(`/mvp/routes/${encodeURIComponent(routeId)}/overlay`);
   if (!resp.ok) return;
   const body = await resp.json();
   if (!body.points || !body.points.length) return;
 
   const poly = L.polyline(
     body.points.map((p) => [p.lat, p.lon]),
-    { color, weight: 5, opacity: 0.8 }
+    { color, weight: 6, opacity: 0.88, lineCap: "round", lineJoin: "round" }
   );
   poly.addTo(routeLayer);
+}
+
+function routeColor(index) {
+  return routeColors[index % routeColors.length];
 }
 
 function startApproachAlert(stop) {
   if (!stop || stop.stop_lat == null || stop.stop_lon == null) return;
   destinationTarget = stop;
 
-  if (Notification && Notification.permission === "default") {
-    Notification.requestPermission();
+  const supportsNotifications = typeof Notification !== "undefined";
+
+  if (supportsNotifications && Notification.permission === "default") {
+    Notification.requestPermission().then((permission) => {
+      if (permission === "denied") {
+        showNotificationBanner(
+          "In-app alert enabled",
+          `Browser notifications are blocked, so RutaGO will keep the alert inside the page for ${stop.stop_name}.`,
+          "info"
+        );
+      }
+    });
   }
 
   if (!navigator.geolocation) return;
@@ -128,10 +266,17 @@ function startApproachAlert(stop) {
         const message = "Approaching destination stop";
         summary.textContent = `${message}: ${destinationTarget.stop_name}`;
 
-        if (Notification && Notification.permission === "granted") {
+        if (supportsNotifications && Notification.permission === "granted") {
           new Notification(message, {
             body: destinationTarget.stop_name,
           });
+          clearNotificationBanner();
+        } else {
+          showNotificationBanner(
+            "Approaching destination",
+            `${destinationTarget.stop_name} is within 300m. Keep this page open for the in-app alert fallback.`,
+            "warning"
+          );
         }
 
         navigator.geolocation.clearWatch(destinationWatchId);
@@ -146,6 +291,8 @@ function startApproachAlert(stop) {
 searchBtn.addEventListener("click", async () => {
   clearResults();
   routeLayer.clearLayers();
+  vehicleLayer.clearLayers();
+  clearNotificationBanner();
 
   const from = parseLatLng(originInput.value);
   const to = parseLatLng(destinationInput.value);
@@ -156,7 +303,7 @@ searchBtn.addEventListener("click", async () => {
 
   summary.textContent = "Searching jeep routes and transfer options...";
 
-  const resp = await fetch(
+  const resp = await apiFetch(
     `/mvp/search?from=${encodeURIComponent(originInput.value)}&to=${encodeURIComponent(
       destinationInput.value
     )}`
@@ -170,6 +317,7 @@ searchBtn.addEventListener("click", async () => {
   const body = await resp.json();
   const directs = body.direct_options || [];
   const transfers = body.transfer_options || [];
+  activeRouteId = directs[0]?.route_id || transfers[0]?.first_route_id || transfers[0]?.second_route_id || null;
 
   summary.textContent = `Found ${directs.length} direct and ${transfers.length} transfer options.`;
 
@@ -177,24 +325,29 @@ searchBtn.addEventListener("click", async () => {
     showEmpty(directResults, "No direct jeep route found for this pair.");
   }
 
-  for (const option of directs) {
+  for (const [index, option] of directs.entries()) {
+    if (index >= 4) break;
+    const color = routeColor(index);
     const el = card(`
       <div class="route">${option.route_name}</div>
       <div class="meta">Board: ${option.board_stop.stop_name}</div>
       <div class="meta">Alight: ${option.alight_stop.stop_name}</div>
       <div class="meta">Walking: ${fmtMeters(option.walking_m)} | Jeep: ${fmtMeters(option.jeep_m)}</div>
       <div class="meta">Est. Travel: ${option.estimated_minutes} min | Transfers: 0</div>
+      <div class="meta">Rank score: ${Number(option.score || 0).toFixed(1)} | Route span: ${option.route_gap_stops ?? "n/a"} stops</div>
+      <div class="pill direct">Direct route</div>
     `);
     el.addEventListener("click", () => startApproachAlert(option.alight_stop));
     directResults.appendChild(el);
-    loadOverlay(option.route_id, "#075985");
+    loadOverlay(option.route_id, color);
   }
 
   if (!transfers.length) {
     showEmpty(transferResults, "No transfer suggestion found for this pair.");
   }
 
-  for (const option of transfers) {
+  for (const [index, option] of transfers.entries()) {
+    if (index >= 4) break;
     const el = card(`
       <div class="route">${option.first_route_name} → ${option.second_route_name}</div>
       <div class="meta">Board: ${option.board_stop.stop_name}</div>
@@ -202,15 +355,23 @@ searchBtn.addEventListener("click", async () => {
       <div class="meta">Alight: ${option.alight_stop.stop_name}</div>
       <div class="meta">Walking: ${fmtMeters(option.walking_m)} | Jeep: ${fmtMeters(option.jeep_m)}</div>
       <div class="meta">Est. Travel: ${option.estimated_minutes} min | Transfers: 1</div>
+      <div class="meta">Rank score: ${Number(option.score || 0).toFixed(1)} | Route span: ${option.route_gap_stops ?? "n/a"} stops</div>
+      <div class="pill transfer">Transfer option</div>
     `);
     el.addEventListener("click", () => startApproachAlert(option.alight_stop));
     transferResults.appendChild(el);
-    loadOverlay(option.first_route_id, "#075985");
-    loadOverlay(option.second_route_id, "#b45309");
+    loadOverlay(option.first_route_id, routeColor(index));
+    loadOverlay(option.second_route_id, routeColor(index + 1));
   }
 
   if (routeLayer.getLayers().length) {
     map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+  }
+
+  if (activeRouteId) {
+    await loadVehicleFeed(activeRouteId);
+  } else {
+    setVehicleSummary("Search a route first, then refresh vehicle snapshots for the leading route.");
   }
 });
 
@@ -224,7 +385,7 @@ nearestBtn.addEventListener("click", async () => {
     return;
   }
 
-  const resp = await fetch(
+  const resp = await apiFetch(
     `/mvp/stops/nearest?lat=${from.lat}&lon=${from.lng}&radius=300`
   );
   if (!resp.ok) {
@@ -260,6 +421,11 @@ nearestBtn.addEventListener("click", async () => {
   if (nearestLayer.getLayers().length) {
     map.fitBounds(nearestLayer.getBounds(), { padding: [25, 25] });
   }
+});
+
+vehiclesBtn.addEventListener("click", async () => {
+  const routeId = activeRouteId || null;
+  await loadVehicleFeed(routeId);
 });
 
 locateBtn.addEventListener("click", () => {
@@ -303,3 +469,4 @@ originInput.value = "14.653500,121.049000";
 destinationInput.value = "14.599500,120.984000";
 setMarker("origin", 14.6535, 121.049);
 setMarker("destination", 14.5995, 120.984);
+setVehicleSummary("Search a route first, then refresh vehicle snapshots for the leading route.");

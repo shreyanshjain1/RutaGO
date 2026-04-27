@@ -137,11 +137,53 @@ input {
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 14px;
+  position: relative;
 }
 
 #map {
   height: min(48vh, 420px);
   min-height: 280px;
+}
+
+.map-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding: 10px 12px;
+  background: rgba(255, 251, 243, 0.96);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  display: inline-block;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+}
+
+.legend-swatch.origin {
+  background: #16a34a;
+}
+
+.legend-swatch.destination {
+  background: #b42318;
+}
+
+.legend-swatch.direct {
+  background: #075985;
+}
+
+.legend-swatch.transfer {
+  background: #b45309;
 }
 
 .card {
@@ -157,6 +199,67 @@ input {
   background: #f5f9fc;
 }
 
+.notice-banner {
+  margin-top: 10px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #f59e0b;
+  background: linear-gradient(135deg, #fff7e6, #fff1cc);
+  color: #7c2d12;
+  box-shadow: 0 10px 20px rgba(180, 83, 9, 0.12);
+}
+
+.notice-banner.success {
+  border-color: #16a34a;
+  background: linear-gradient(135deg, #e9f9ef, #dff7e6);
+  color: #14532d;
+}
+
+.notice-banner.info {
+  border-color: #0891b2;
+  background: linear-gradient(135deg, #e6fbff, #d7f4fb);
+  color: #0f4c5c;
+}
+
+.notice-banner .notice-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.notice-banner .notice-body {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.vehicle-card .meta {
+  margin-top: 2px;
+}
+
+.vehicle-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #155e75;
+  font-size: 12px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.vehicle-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.vehicle-badge.stale {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .card .route {
   font-size: 16px;
   font-weight: 700;
@@ -165,6 +268,27 @@ input {
 .card .meta {
   font-size: 13px;
   color: var(--muted);
+}
+
+.card .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #083344;
+  font-size: 12px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.card .pill.direct {
+  background: #e0f2fe;
+}
+
+.card .pill.transfer {
+  background: #fef3c7;
 }
 
 .results-grid {
@@ -182,5 +306,72 @@ input {
 @media (min-width: 760px) {
   .results-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map-legend {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .app-header {
+    flex-direction: column;
+  }
+
+  h1 {
+    font-size: 23px;
+  }
+
+  h2 {
+    font-size: 19px;
+  }
+
+  .controls,
+  .results {
+    padding: 12px;
+  }
+
+  .inline,
+  .actions {
+    flex-direction: column;
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  #map {
+    height: 42vh;
+    min-height: 240px;
+  }
+
+  .map-legend {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+
+  .card .route {
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .card .meta {
+    line-height: 1.4;
+  }
+
+  .card .pill {
+    margin-top: 10px;
+  }
+
+  .notice-banner {
+    padding: 11px 12px;
   }
 }

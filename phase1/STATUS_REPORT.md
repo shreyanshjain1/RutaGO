@@ -1,11 +1,38 @@
-# Phase 1: Infrastructure Setup - Status Report
+# Phase 2: MVP Development - Checklist
 
-**Date**: March 27, 2026  
-**Session**: OTP + Database Infrastructure Implementation
+**Date**: April 27, 2026  
+**Focus**: Commuter MVP for map search, nearest stops, transfer suggestions, and notifications
 
 ---
 
-## ✅ Completed: OTP Routing Engine
+## ✅ Done
+
+- [x] Mobile-friendly map interface
+- [x] Origin to destination route search
+- [x] Nearest stop finder within 300m
+- [x] Direct jeep route suggestions
+- [x] Transfer suggestions
+- [x] Route overlay display on the map
+- [x] Basic approaching-destination notification flow
+- [x] Backend APIs for search, stops, routes, and OTP proxying
+
+## 🟡 In Progress
+
+- [x] Improve route ranking and deduplication
+- [x] Make overlays easier to read on small screens
+- [x] Rank transfer suggestions by total trip quality
+- [x] Add clearer in-app notification fallback when browser alerts are blocked
+
+## ⏳ Next Up
+
+- [x] Move search data from CSV/memory into PostgreSQL + PostGIS (backend now supports PostgreSQL source + optional GTFS auto-seed)
+- [x] Integrate transit-aware routing into OTP (transit-preferred `/plan` with walk fallback metadata)
+- [x] Add live vehicle tracking hooks (synthetic feed endpoints wired for future real telemetry)
+- [x] Package the MVP for Android/iOS delivery (Capacitor wrapper scaffolded with generated android/ios projects)
+
+---
+
+## Phase 1 Foundation (Complete)
 
 ### Downloads & File Preparations
 - ✅ OTP JAR: `otp-2.4.0-shaded.jar` (saved as OTP 2.5.0) - 444 MB
@@ -38,7 +65,7 @@ Command:  java -Xmx2g -jar otp.jar --load ..\\data\\prepared
 
 ---
 
-## ✅ Completed: Backend API Integration
+## Backend and Routing Foundation
 
 ### Server Status
 - 🟢 **Running**: Port 3000
@@ -84,7 +111,7 @@ PORT=3000
 
 ---
 
-## ⏳ Pending: PostgreSQL + PostGIS
+## Pending: PostgreSQL + PostGIS
 
 ### Current Status
 - ❌ PostgreSQL not installed (yet)
@@ -202,43 +229,46 @@ Invoke-RestMethod 'http://localhost:3000/health'
 
 ## ⚠️ Current Limitations
 
-1. **No Transit Integration**
-   - OTP graph built from OSM only (street network)
-   - GTFS data not yet integrated into routing
-   - Result: Walking/cycling directions only, no bus routes in plan
+1. **Transit Data in OTP Graph Still Pending**
+  - Backend now requests transit-aware plans from OTP (`TRANSIT,WALK`).
+  - If OTP has no transit itineraries, backend falls back to walk and flags `transit_unavailable`.
+  - Full transit results still depend on rebuilding OTP graph with GTFS transit data.
 
-2. **No Database Persistence**
-   - Routes/stops served from memory (CSV)
-   - No vehicle tracking
-   - No user session storage
+2. **PostgreSQL Runtime Still Pending**
+  - Backend supports PostgreSQL as a primary source for `routes/stops/trips/stop_times`.
+  - Current runtime remains CSV until PostgreSQL is installed/configured in `.env`.
+  - User/session persistence is still pending.
 
 3. **No Real-Time Data**
-   - No live vehicle locations
+  - Synthetic vehicle hook feed is available; real telemetry feed is not integrated yet.
    - No schedule updates
    - No trip alerts
 
 ---
 
-## 🔜 Next Steps (Phase 1.1+)
+## Phase 2 Checklist Details
 
-### Immediate (Phase 1.1)
-- [ ] Install PostgreSQL 16 + PostGIS
-- [ ] Apply database schema
-- [ ] Migrate GTFS data to database
-- [ ] Update backend endpoints to use database
-- [ ] Add geographic queries for stops within radius
+### Map-Based Interface
+- [x] Interactive map
+- [x] Route overlays
+- [x] Better legend and route status labels
+- [x] More readable mobile layout on small phones
 
-### Medium-term (Phase 2)
-- [ ] Integrate GTFS data into OTP graph
-- [ ] Add transit routing (bus routes in plan)
-- [ ] Real-time vehicle location API
-- [ ] Trip tracking system
+### Route Search
+- [x] Origin → destination input flow
+- [x] Jeep route suggestions
+- [x] Transfer suggestions
+- [x] Better ranking by time, walking, and transfer count
 
-### Future (Phase 3)
-- [ ] User authentication system
-- [ ] Saved routes & favorites
-- [ ] User-submitted issue reports
-- [ ] Crowdsourced data analysis
+### Nearest Stop Finder
+- [x] Spatial query within 300m
+- [ ] Show radius control in UI
+- [ ] Add sort/filter by accessibility or distance
+
+### Basic Notifications
+- [x] Approaching destination stop alert flow
+- [x] Fallback in-app alert banner
+- [ ] Adjustable alert distance threshold
 
 ---
 
@@ -252,6 +282,6 @@ Invoke-RestMethod 'http://localhost:3000/health'
 
 ---
 
-**Status**: ✅ Phase 1 Infrastructure Complete (OTP + Backend)
-**Blocking Item**: PostgreSQL installation (optional, for persistence)
-**Ready for**: Street-based routing, GTFS data search, API integration
+**Status**: Phase 2 MVP is underway
+**Blocking Item**: PostgreSQL installation and OTP GTFS graph rebuild for full transit routing
+**Ready for**: Android/iOS packaging, adjustable alert threshold, and real telemetry integration

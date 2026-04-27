@@ -53,11 +53,18 @@
 
       <section class="map-panel">
         <div id="map"></div>
+        <div class="map-legend" id="mapLegend">
+          <div class="legend-row"><span class="legend-swatch origin"></span><span>Origin</span></div>
+          <div class="legend-row"><span class="legend-swatch destination"></span><span>Destination</span></div>
+          <div class="legend-row"><span class="legend-swatch direct"></span><span>Direct jeep route</span></div>
+          <div class="legend-row"><span class="legend-swatch transfer"></span><span>Transfer segment</span></div>
+        </div>
       </section>
 
       <section class="results">
         <h2>Transit Navigation</h2>
         <div id="summary" class="card muted">Enter origin and destination, then run route search.</div>
+        <div id="notificationBanner" class="notice-banner" hidden></div>
 
         <h3>Direct Jeep Routes</h3>
         <div id="directResults" class="results-grid"></div>
@@ -67,6 +74,13 @@
 
         <h3>Nearest Stops</h3>
         <div id="nearestResults" class="results-grid"></div>
+
+        <h3>Live Vehicle Hooks</h3>
+        <div class="actions">
+          <button id="vehiclesBtn" class="btn secondary">Refresh Vehicle Feed</button>
+        </div>
+        <div id="vehicleSummary" class="card muted">Search a route first, then refresh vehicle snapshots for the leading route.</div>
+        <div id="vehicleResults" class="results-grid"></div>
       </section>
     </div>
 
@@ -75,6 +89,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script src="./rutago.config.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

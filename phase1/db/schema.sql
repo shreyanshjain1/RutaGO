@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS routes (
     route_id TEXT UNIQUE NOT NULL,
     route_short_name TEXT,
     route_long_name TEXT,
+    route_desc TEXT,
     route_type INTEGER,
+    agency_id TEXT,
     route_color TEXT,
     route_text_color TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -35,6 +37,27 @@ CREATE TABLE IF NOT EXISTS vehicles (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS trips (
+    id SERIAL PRIMARY KEY,
+    trip_id TEXT UNIQUE NOT NULL,
+    route_id TEXT REFERENCES routes(route_id),
+    service_id TEXT,
+    shape_id TEXT,
+    trip_headsign TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS stop_times (
+    id SERIAL PRIMARY KEY,
+    trip_id TEXT REFERENCES trips(trip_id),
+    stop_id TEXT REFERENCES stops(stop_id),
+    stop_sequence INTEGER,
+    arrival_time TEXT,
+    departure_time TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (trip_id, stop_id, stop_sequence)
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -57,5 +80,8 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE INDEX IF NOT EXISTS idx_stops_geom ON stops USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_vehicles_route ON vehicles(route_id);
+CREATE INDEX IF NOT EXISTS idx_trips_route ON trips(route_id);
+CREATE INDEX IF NOT EXISTS idx_stop_times_trip ON stop_times(trip_id);
+CREATE INDEX IF NOT EXISTS idx_stop_times_stop ON stop_times(stop_id);
 CREATE INDEX IF NOT EXISTS idx_reports_route ON reports(route_id);
 CREATE INDEX IF NOT EXISTS idx_reports_stop ON reports(stop_id);

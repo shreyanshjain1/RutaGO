@@ -9,6 +9,13 @@ const {
   loadTrips,
   loadStopTimes,
 } = require("./csvStore");
+const {
+  isPostgresEnabled,
+  isPostgresRequired,
+  isAutoImportEnabled,
+  loadTransitDataFromDb,
+  seedTransitDataFromGtfs,
+} = require("./dbStore");
 
 dotenv.config();
 
@@ -19,6 +26,9 @@ app.use(express.json());
 const PORT = Number(process.env.PORT || 3000);
 const OTP_BASE_URL = process.env.OTP_BASE_URL || "http://localhost:8080";
 const GTFS_DIR = process.env.GTFS_DIR || "../../data/prepared";
+const OTP_TRANSIT_PREFERRED = String(process.env.OTP_TRANSIT_PREFERRED || "true").toLowerCase() === "true";
+const OTP_ALLOW_WALK_FALLBACK = String(process.env.OTP_ALLOW_WALK_FALLBACK || "true").toLowerCase() === "true";
+const OTP_MAX_WALK_METERS = Number(process.env.OTP_MAX_WALK_METERS || 1500);
 const gtfsDir = path.resolve(__dirname, GTFS_DIR);
 const publicDir = path.resolve(__dirname, "../public");
 
@@ -32,12 +42,42 @@ let stopById = new Map();
 let tripById = new Map();
 let routeToRepresentativeStops = new Map();
 let stopToRoutes = new Map();
+let dataSource = "csv";
 
-function refreshData() {
+function loadFromCsv() {
   routes = loadRoutes(gtfsDir);
   stops = loadStops(gtfsDir);
   trips = loadTrips(gtfsDir);
   stopTimes = loadStopTimes(gtfsDir);
+  dataSource = "csv";
+}
+
+async function refreshData() {
+  if (isPostgresEnabled()) {
+    try {
+      if (isAutoImportEnabled()) {
+        await seedTransitDataFromGtfs(gtfsDir);
+      }
+
+      const dbData = await loadTransitDataFromDb();
+      if (dbData) {
+        routes = dbData.routes;
+        stops = dbData.stops;
+        trips = dbData.trips;
+        stopTimes = dbData.stopTimes;
+        dataSource = "postgres";
+      }
+    } catch (err) {
+      if (isPostgresRequired()) {
+        throw err;
+      }
+      console.warn(`Postgres unavailable. Falling back to CSV data: ${err.message}`);
+      loadFromCsv();
+    }
+  } else {
+    loadFromCsv();
+  }
+
   buildTransitIndexes();
 }
 
@@ -127,6 +167,33 @@ function estimateTravelMinutes({ jeepDistanceM, walkingDistanceM, transfers }) {
   return Math.max(6, Math.round(jeepMinutes + walkingMinutes + waitAndTransfer));
 }
 
+function routeGap(routeId, startStopId, endStopId) {
+  const seq = routeToRepresentativeStops.get(routeId);
+  if (!seq) return null;
+
+  const startIndex = seq.indexOf(startStopId);
+  const endIndex = seq.indexOf(endStopId);
+  if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) return null;
+
+  return endIndex - startIndex;
+}
+
+function tripQualityScore({
+  estimatedMinutes,
+  walkingMeters,
+  transfers,
+  routeGapStops,
+  legGapA,
+  legGapB,
+}) {
+  const walkingPenalty = walkingMeters / 320;
+  const transferPenalty = transfers * 14;
+  const routeGapPenalty = routeGapStops == null ? 0 : Math.min(routeGapStops / 2, 18);
+  const legImbalancePenalty =
+    legGapA == null || legGapB == null ? 0 : Math.min(Math.abs(legGapA - legGapB) * 0.75, 8);
+  return estimatedMinutes + walkingPenalty + transferPenalty + routeGapPenalty + legImbalancePenalty;
+}
+
 function buildOverlayPoints(routeId) {
   const seq = routeToRepresentativeStops.get(routeId) || [];
   const points = [];
@@ -141,6 +208,86 @@ function buildOverlayPoints(routeId) {
     });
   }
   return points;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function bearingDegrees(aLat, aLon, bLat, bLon) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const dLon = toRad(bLon - aLon);
+
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function buildVehicleSnapshot(routeId, vehicleIndex = 0, timeMs = Date.now()) {
+  const seq = routeToRepresentativeStops.get(routeId) || [];
+  if (seq.length < 2) return null;
+
+  const route = routeById.get(routeId);
+  if (!route) return null;
+
+  const routeSeed = hashString(routeId);
+  const segmentCount = seq.length - 1;
+  const phase = ((timeMs / 60000) + routeSeed / 997 + vehicleIndex * 0.27) % segmentCount;
+  const segmentIndex = Math.floor(phase);
+  const segmentProgress = phase - segmentIndex;
+
+  const currentStop = stopById.get(seq[segmentIndex]);
+  const nextStop = stopById.get(seq[segmentIndex + 1]);
+  if (!currentStop || !nextStop) return null;
+
+  const lat = currentStop.stop_lat + (nextStop.stop_lat - currentStop.stop_lat) * segmentProgress;
+  const lon = currentStop.stop_lon + (nextStop.stop_lon - currentStop.stop_lon) * segmentProgress;
+
+  return {
+    vehicle_code: `veh-${routeId}-${vehicleIndex + 1}`,
+    route_id: routeId,
+    route_name: route.route_long_name || route.route_short_name || routeId,
+    lat: Number(lat.toFixed(6)),
+    lon: Number(lon.toFixed(6)),
+    heading: Math.round(
+      bearingDegrees(currentStop.stop_lat, currentStop.stop_lon, nextStop.stop_lat, nextStop.stop_lon)
+    ),
+    speed_kph: Number((14 + (routeSeed % 7) + vehicleIndex * 1.5).toFixed(1)),
+    last_seen_at: new Date(timeMs - vehicleIndex * 15000).toISOString(),
+    progress: Number(segmentProgress.toFixed(2)),
+    current_stop: currentStop.stop_name,
+    next_stop: nextStop.stop_name,
+    source: "synthetic-live-hook",
+  };
+}
+
+function buildVehicleFeed(routeId = null, limit = 8) {
+  const timeMs = Date.now();
+
+  if (routeId) {
+    return [
+      buildVehicleSnapshot(routeId, 0, timeMs),
+      buildVehicleSnapshot(routeId, 1, timeMs),
+      buildVehicleSnapshot(routeId, 2, timeMs),
+    ].filter(Boolean);
+  }
+
+  const activeRouteIds = Array.from(routeToRepresentativeStops.keys())
+    .filter((rid) => (routeToRepresentativeStops.get(rid) || []).length >= 2)
+    .slice(0, limit);
+
+  return activeRouteIds
+    .map((rid, index) => buildVehicleSnapshot(rid, index, timeMs))
+    .filter(Boolean);
 }
 
 app.use(express.static(publicDir));
@@ -158,6 +305,7 @@ function parseLatLng(value) {
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
+    data_source: dataSource,
     routes: routes.length,
     stops: stops.length,
     trips: trips.length,
@@ -199,6 +347,40 @@ app.get("/mvp/routes/:routeId/overlay", (req, res) => {
   });
 });
 
+app.get("/mvp/vehicles", (req, res) => {
+  const routeId = (req.query.route_id || "").toString().trim();
+  const limit = Math.max(1, Math.min(Number(req.query.limit || 8) || 8, 20));
+
+  if (routeId && !routeById.has(routeId)) {
+    return res.status(404).json({ error: "route_id not found" });
+  }
+
+  const data = buildVehicleFeed(routeId || null, limit);
+  return res.json({
+    route_id: routeId || null,
+    count: data.length,
+    generated_at: new Date().toISOString(),
+    source: "synthetic-live-hook",
+    data,
+  });
+});
+
+app.get("/mvp/routes/:routeId/vehicles", (req, res) => {
+  const routeId = req.params.routeId;
+  if (!routeById.has(routeId)) {
+    return res.status(404).json({ error: "route_id not found" });
+  }
+
+  const data = buildVehicleFeed(routeId, 3);
+  return res.json({
+    route_id: routeId,
+    count: data.length,
+    generated_at: new Date().toISOString(),
+    source: "synthetic-live-hook",
+    data,
+  });
+});
+
 app.get("/mvp/search", (req, res) => {
   const from = parseLatLng(req.query.from);
   const to = parseLatLng(req.query.to);
@@ -226,6 +408,7 @@ app.get("/mvp/search", (req, res) => {
         if (iTo <= iFrom) continue;
 
         const route = routeById.get(routeId);
+        const gapStops = routeGap(routeId, fromStop.stop_id, toStop.stop_id);
         const rideDistance = haversineMeters(
           fromStop.stop_lat,
           fromStop.stop_lon,
@@ -250,6 +433,17 @@ app.get("/mvp/search", (req, res) => {
             walkingDistanceM: walkingDistance,
             transfers: 0,
           }),
+          score: tripQualityScore({
+            estimatedMinutes: estimateTravelMinutes({
+              jeepDistanceM: rideDistance,
+              walkingDistanceM: walkingDistance,
+              transfers: 0,
+            }),
+            walkingMeters: walkingDistance,
+            transfers: 0,
+            routeGapStops: gapStops,
+          }),
+          route_gap_stops: gapStops,
         });
       }
     }
@@ -263,7 +457,7 @@ app.get("/mvp/search", (req, res) => {
     seenDirect.add(key);
     directDedup.push(option);
   }
-  directDedup.sort((a, b) => a.estimated_minutes - b.estimated_minutes);
+  directDedup.sort((a, b) => a.score - b.score || a.estimated_minutes - b.estimated_minutes);
 
   const transfers = [];
   const originRouteIds = new Set();
@@ -339,6 +533,10 @@ app.get("/mvp/search", (req, res) => {
 
       const routeAObj = routeById.get(routeA);
       const routeBObj = routeById.get(routeB);
+      const transferGap = routeGap(routeA, originCandidate.stop_id, transferStopId);
+      const transferGapTwo = routeGap(routeB, transferStopId, destinationCandidate.stop_id);
+      const totalRouteGap =
+        transferGap == null || transferGapTwo == null ? null : transferGap + transferGapTwo;
 
       transfers.push({
         type: "transfer",
@@ -359,6 +557,19 @@ app.get("/mvp/search", (req, res) => {
           walkingDistanceM: walkingDistance,
           transfers: 1,
         }),
+        score: tripQualityScore({
+          estimatedMinutes: estimateTravelMinutes({
+            jeepDistanceM: rideA + rideB,
+            walkingDistanceM: walkingDistance,
+            transfers: 1,
+          }),
+          walkingMeters: walkingDistance,
+          transfers: 1,
+          routeGapStops: totalRouteGap,
+          legGapA: transferGap,
+          legGapB: transferGapTwo,
+        }),
+        route_gap_stops: totalRouteGap,
       });
     }
   }
@@ -371,7 +582,7 @@ app.get("/mvp/search", (req, res) => {
     seenTransfer.add(key);
     transferDedup.push(option);
   }
-  transferDedup.sort((a, b) => a.estimated_minutes - b.estimated_minutes);
+  transferDedup.sort((a, b) => a.score - b.score || a.estimated_minutes - b.estimated_minutes);
 
   return res.json({
     origin: from,
@@ -408,6 +619,63 @@ app.get("/stops", (req, res) => {
   res.json({ count: filtered.length, data: filtered });
 });
 
+function buildOtpPlanUrl(from, to, modes) {
+  const params = new URLSearchParams({
+    fromPlace: `${from.lat},${from.lng}`,
+    toPlace: `${to.lat},${to.lng}`,
+    mode: modes,
+    numItineraries: "5",
+    maxWalkDistance: String(OTP_MAX_WALK_METERS),
+  });
+  return `${OTP_BASE_URL}/otp/routers/default/plan?${params.toString()}`;
+}
+
+async function fetchPlan(url) {
+  const response = await fetch(url);
+  const body = await response.json();
+  return { status: response.status, body };
+}
+
+async function getTransitAwarePlan(from, to) {
+  const transitUrl = buildOtpPlanUrl(from, to, "TRANSIT,WALK");
+  const transitResponse = await fetchPlan(transitUrl);
+
+  const transitItineraries = transitResponse.body?.plan?.itineraries || [];
+  if (transitResponse.status < 400 && transitItineraries.length > 0) {
+    return {
+      status: transitResponse.status,
+      body: {
+        ...transitResponse.body,
+        routing_mode: "transit",
+      },
+    };
+  }
+
+  if (!OTP_ALLOW_WALK_FALLBACK) {
+    return {
+      status: transitResponse.status,
+      body: {
+        ...transitResponse.body,
+        routing_mode: "transit",
+        transit_unavailable: true,
+      },
+    };
+  }
+
+  const walkUrl = buildOtpPlanUrl(from, to, "WALK");
+  const walkResponse = await fetchPlan(walkUrl);
+  return {
+    status: walkResponse.status,
+    body: {
+      ...walkResponse.body,
+      routing_mode: "walk_fallback",
+      transit_unavailable: true,
+      transit_attempt_url: transitUrl,
+      fallback_url: walkUrl,
+    },
+  };
+}
+
 app.get("/plan", async (req, res) => {
   const from = parseLatLng(req.query.from);
   const to = parseLatLng(req.query.to);
@@ -418,20 +686,19 @@ app.get("/plan", async (req, res) => {
     });
   }
 
-  const url =
-    `${OTP_BASE_URL}/otp/routers/default/plan` +
-    `?fromPlace=${from.lat},${from.lng}` +
-    `&toPlace=${to.lat},${to.lng}` +
-    `&mode=TRANSIT,WALK`;
-
   try {
-    const response = await fetch(url);
-    const body = await response.json();
-    return res.status(response.status).json(body);
+    if (OTP_TRANSIT_PREFERRED) {
+      const plan = await getTransitAwarePlan(from, to);
+      return res.status(plan.status).json(plan.body);
+    }
+
+    const url = buildOtpPlanUrl(from, to, "WALK");
+    const plan = await fetchPlan(url);
+    return res.status(plan.status).json({ ...plan.body, routing_mode: "walk" });
   } catch (err) {
     return res.status(502).json({
       error: "Could not reach OTP server",
-      otp_url: url,
+      otp_url: `${OTP_BASE_URL}/otp/routers/default/plan`,
       details: err.message,
     });
   }
@@ -451,15 +718,20 @@ app.get("*", (req, res, next) => {
   return res.sendFile(path.join(publicDir, "index.html"));
 });
 
-try {
-  refreshData();
-} catch (err) {
-  console.error("Failed to load GTFS data:", err.message);
-  process.exit(1);
+async function startServer() {
+  try {
+    await refreshData();
+  } catch (err) {
+    console.error("Failed to load transit data:", err.message);
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`RutaGO Phase 2 API running at http://localhost:${PORT}`);
+    console.log(`GTFS data directory: ${gtfsDir}`);
+    console.log(`Transit data source: ${dataSource}`);
+    console.log(`MVP mobile web app: http://localhost:${PORT}`);
+  });
 }
 
-app.listen(PORT, () => {
-  console.log(`RutaGO Phase 2 API running at http://localhost:${PORT}`);
-  console.log(`GTFS data directory: ${gtfsDir}`);
-  console.log(`MVP mobile web app: http://localhost:${PORT}`);
-});
+startServer();

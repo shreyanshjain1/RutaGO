@@ -1,0 +1,5 @@
+package com.rutago.mobile;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {}
