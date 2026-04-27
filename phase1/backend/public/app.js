@@ -100,6 +100,16 @@ const elements = {
   feedbackMessage: $("feedbackMessage"),
   feedbackList: $("feedbackList"),
   dashboardMessage: $("dashboardMessage"),
+  savedPlacesList: $("savedPlacesList"),
+  savePlaceForm: $("savePlaceForm"),
+  placeLabel: $("placeLabel"),
+  placeType: $("placeType"),
+  placeLat: $("placeLat"),
+  placeLon: $("placeLon"),
+  useOriginForPlaceBtn: $("useOriginForPlaceBtn"),
+  useDestinationForPlaceBtn: $("useDestinationForPlaceBtn"),
+  selectedItineraryCard: $("selectedItineraryCard"),
+  routeTimelineList: $("routeTimelineList"),
   adminGate: $("adminGate"),
   adminSummary: $("adminSummary"),
   adminFeedbackList: $("adminFeedbackList"),
@@ -124,7 +134,8 @@ let activeRouteId = null;
 let lastSelectedRoute = null;
 let deferredInstallPrompt = null;
 let allStopsCache = [];
-let dashboardCache = { favorites: [], recentSearches: [], feedback: [] };
+let dashboardCache = { favorites: [], recentSearches: [], feedback: [], savedPlaces: [] };
+let lastSearchBody = null;
 
 const routeColors = ["#f9d423", "#3b9a38", "#e64362", "#2e6bdc", "#ff8f1f", "#7b61ff"];
 
@@ -149,7 +160,7 @@ function showPanel(panelId) {
   const panel = $(panelId);
   if (panel) panel.classList.add("is-active");
   closeDrawer();
-  if (panelId === "favoritesPanel" || panelId === "feedbackPanel") refreshDashboard();
+  if (["favoritesPanel", "feedbackPanel", "savedPlacesPanel"].includes(panelId)) refreshDashboard();
   if (panelId === "adminPanel") loadAdminCenter();
   setTimeout(invalidateMapSafe, 80);
 }
@@ -318,6 +329,7 @@ async function refreshDashboard() {
     favorites: body.favorites || [],
     recentSearches: body.recentSearches || [],
     feedback: body.feedback || [],
+    savedPlaces: body.savedPlaces || [],
   };
   renderUserState();
   renderDashboardLists();
@@ -382,6 +394,52 @@ function renderDashboardLists() {
     }
   }
 
+  if (elements.savedPlacesList) {
+    if (!dashboardCache.savedPlaces.length) {
+      elements.savedPlacesList.innerHTML = `<div class="message-card small">No saved places yet. Save your dorm, home, school, or favorite pickup point.</div>`;
+    } else {
+      elements.savedPlacesList.innerHTML = "";
+      dashboardCache.savedPlaces.forEach((place) => {
+        const card = document.createElement("article");
+        card.className = "stop-card saved-place-card";
+        card.innerHTML = `
+          <div class="stop-card-title">📍 ${place.label}</div>
+          <div class="stop-card-meta">${place.type || "custom"} · ${place.lat},${place.lon}</div>
+          <div class="card-actions compact-actions">
+            <button class="mini-btn use-place-origin" data-lat="${place.lat}" data-lon="${place.lon}">Use Start</button>
+            <button class="mini-btn use-place-destination" data-lat="${place.lat}" data-lon="${place.lon}">Use End</button>
+            <button class="mini-btn remove-place" data-id="${place.id}">Remove</button>
+          </div>
+        `;
+        elements.savedPlacesList.appendChild(card);
+      });
+      document.querySelectorAll(".use-place-origin").forEach((button) => {
+        button.addEventListener("click", () => {
+          const lat = Number(button.dataset.lat);
+          const lon = Number(button.dataset.lon);
+          elements.originInput.value = formatLatLng(lat, lon);
+          setMarker("origin", lat, lon, true);
+          showPanel("plannerPanel");
+        });
+      });
+      document.querySelectorAll(".use-place-destination").forEach((button) => {
+        button.addEventListener("click", () => {
+          const lat = Number(button.dataset.lat);
+          const lon = Number(button.dataset.lon);
+          elements.destinationInput.value = formatLatLng(lat, lon);
+          setMarker("destination", lat, lon, true);
+          showPanel("plannerPanel");
+        });
+      });
+      document.querySelectorAll(".remove-place").forEach((button) => {
+        button.addEventListener("click", async () => {
+          await apiFetch(`/api/users/me/saved-places/${button.dataset.id}`, { method: "DELETE" });
+          await refreshDashboard();
+        });
+      });
+    }
+  }
+
   if (elements.feedbackList) {
     if (!dashboardCache.feedback.length) {
       elements.feedbackList.innerHTML = `<div class="message-card small">No feedback reports submitted yet.</div>`;
@@ -415,6 +473,112 @@ async function saveFavorite(routeData) {
   await refreshDashboard();
 }
 
+async function savePlaceFromForm(event) {
+  event.preventDefault();
+  if (!requireAuthUi()) return;
+  const lat = Number(elements.placeLat.value);
+  const lon = Number(elements.placeLon.value);
+  const resp = await apiFetch("/api/users/me/saved-places", {
+    method: "POST",
+    body: JSON.stringify({
+      label: elements.placeLabel.value,
+      type: elements.placeType.value,
+      lat,
+      lon,
+    }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setSummary(body.error || "Could not save place.");
+    return;
+  }
+  elements.savePlaceForm.reset();
+  setSummary("Place saved. You can reuse it from Saved Places.");
+  await refreshDashboard();
+  showPanel("savedPlacesPanel");
+}
+
+function fillPlaceCoordinates(source) {
+  const value = source === "origin" ? elements.originInput.value : elements.destinationInput.value;
+  const point = parseLatLng(value);
+  if (!point) {
+    setSummary(`Set a valid ${source} first.`);
+    return;
+  }
+  elements.placeLat.value = point.lat.toFixed(6);
+  elements.placeLon.value = point.lng.toFixed(6);
+}
+
+function buildItineraryHtml(option) {
+  if (!option) return "Search a route to generate a step-by-step trip plan.";
+  const isTransfer = option.type === "transfer";
+  const title = isTransfer ? `${option.first_route_name} → ${option.second_route_name}` : option.route_name;
+  const steps = isTransfer
+    ? [
+        `Walk to ${option.board_stop.stop_name}.`,
+        `Ride ${option.first_route_name}.`,
+        `Transfer at ${option.transfer_stop.stop_name}.`,
+        `Ride ${option.second_route_name}.`,
+        `Get off at ${option.alight_stop.stop_name}.`,
+      ]
+    : [
+        `Walk to ${option.board_stop.stop_name}.`,
+        `Ride ${option.route_name}.`,
+        `Get off at ${option.alight_stop.stop_name}.`,
+      ];
+  return `
+    <strong>🏆 Recommended: ${title}</strong>
+    <div class="stop-card-meta">${option.estimated_minutes} min · ${fmtMeters(option.walking_m)} walk · ${fmtMeters(option.jeep_m)} ride · ${option.transfers} transfer(s)</div>
+    <ol class="itinerary-list">${steps.map((step) => `<li>${step}</li>`).join("")}</ol>
+    <div class="card-actions compact-actions">
+      <button class="mini-btn" id="shareTripBtn" type="button">Copy Trip Summary</button>
+      <button class="mini-btn" id="showTimelineBtn" type="button" data-route="${option.route_id || option.first_route_id}">Show Stops</button>
+    </div>
+  `;
+}
+
+function renderRecommendedItinerary(directs, transfers) {
+  if (!elements.selectedItineraryCard) return;
+  const combined = [...directs, ...transfers].sort((a, b) => (a.score || 9999) - (b.score || 9999));
+  const best = combined[0];
+  elements.selectedItineraryCard.innerHTML = buildItineraryHtml(best);
+  const shareButton = $("shareTripBtn");
+  if (shareButton && best) {
+    shareButton.addEventListener("click", async () => {
+      const title = best.type === "transfer" ? `${best.first_route_name} to ${best.second_route_name}` : best.route_name;
+      const summary = `RutaGO trip: ${title}. Board at ${best.board_stop.stop_name}, get off at ${best.alight_stop.stop_name}. Estimated ${best.estimated_minutes} minutes.`;
+      await navigator.clipboard?.writeText(summary).catch(() => null);
+      setSummary("Trip summary copied.");
+    });
+  }
+  const timelineButton = $("showTimelineBtn");
+  if (timelineButton && best) {
+    timelineButton.addEventListener("click", () => loadRouteTimeline(timelineButton.dataset.route));
+  }
+}
+
+async function loadRouteTimeline(routeId) {
+  if (!elements.routeTimelineList || !routeId) return;
+  elements.routeTimelineList.innerHTML = `<div class="message-card small">Loading route stop timeline...</div>`;
+  const resp = await apiFetch(`/api/routes/${encodeURIComponent(routeId)}/stops`);
+  if (!resp.ok) {
+    elements.routeTimelineList.innerHTML = `<div class="message-card small">Could not load route stops.</div>`;
+    return;
+  }
+  const body = await resp.json();
+  const stops = body.data || [];
+  if (!stops.length) {
+    elements.routeTimelineList.innerHTML = `<div class="message-card small">No ordered stops available for this route.</div>`;
+    return;
+  }
+  elements.routeTimelineList.innerHTML = stops.slice(0, 18).map((stop) => `
+    <article class="stop-card timeline-card">
+      <div class="stop-card-title"><span class="timeline-number">${stop.sequence}</span> ${stop.stop_name}</div>
+      <div class="stop-card-meta">${stop.stop_id}</div>
+    </article>
+  `).join("");
+}
+
 function createRouteCard({ title, board, alight, meta, tags, color, stop, routeId, favoritePayload }) {
   const card = document.createElement("article");
   card.className = "route-card";
@@ -427,6 +591,7 @@ function createRouteCard({ title, board, alight, meta, tags, color, stop, routeI
     <div class="card-actions">
       <button class="mini-btn select-reminder-btn" type="button">Reminder</button>
       <button class="mini-btn save-favorite-btn" type="button">Save Favorite</button>
+      <button class="mini-btn timeline-btn" type="button">Stops</button>
     </div>
   `;
   card.querySelector(".select-reminder-btn").addEventListener("click", (event) => {
@@ -440,6 +605,11 @@ function createRouteCard({ title, board, alight, meta, tags, color, stop, routeI
   card.querySelector(".save-favorite-btn").addEventListener("click", async (event) => {
     event.stopPropagation();
     await saveFavorite(favoritePayload || { route_id: routeId, title, board_stop_name: board, alight_stop_name: alight });
+  });
+  card.querySelector(".timeline-btn").addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await loadRouteTimeline(routeId);
+    showPanel("routesPanel");
   });
   card.addEventListener("click", () => {
     selectedReminderStop = stop;
@@ -479,6 +649,8 @@ function clearRouteResults() {
   elements.directResults.innerHTML = "";
   elements.transferResults.innerHTML = "";
   elements.vehicleResults.innerHTML = "";
+  if (elements.selectedItineraryCard) elements.selectedItineraryCard.innerHTML = "Search a route to generate a step-by-step trip plan.";
+  if (elements.routeTimelineList) elements.routeTimelineList.innerHTML = "";
 }
 
 function renderSelectedReminder() {
@@ -533,16 +705,26 @@ async function searchRoutes() {
   setSummary("Searching jeepney routes and transfer suggestions...");
   showPanel("plannerPanel");
 
-  const resp = await apiFetch(`/api/search?from=${encodeURIComponent(elements.originInput.value)}&to=${encodeURIComponent(elements.destinationInput.value)}`);
-  if (!resp.ok) {
-    setSummary("Search failed. Check if the backend is running, then try again.");
-    showPanel("routesPanel");
-    return;
+  let body = null;
+  try {
+    const resp = await apiFetch(`/api/search?from=${encodeURIComponent(elements.originInput.value)}&to=${encodeURIComponent(elements.destinationInput.value)}`);
+    if (!resp.ok) throw new Error("Search failed");
+    body = await resp.json();
+    lastSearchBody = body;
+    window.localStorage.setItem("rutago_last_search", JSON.stringify(body));
+  } catch (_error) {
+    body = lastSearchBody || JSON.parse(window.localStorage.getItem("rutago_last_search") || "null");
+    if (!body) {
+      setSummary("Search failed. Check if the backend is running, then try again.");
+      showPanel("routesPanel");
+      return;
+    }
+    setSummary("Showing your last cached route result because the backend is unavailable.");
   }
 
-  const body = await resp.json();
   const directs = body.direct_options || [];
   const transfers = body.transfer_options || [];
+  renderRecommendedItinerary(directs, transfers);
   activeRouteId = directs[0]?.route_id || transfers[0]?.first_route_id || transfers[0]?.second_route_id || null;
   await recordRecentSearch(elements.originInput.value, elements.destinationInput.value, directs, transfers);
 
@@ -614,7 +796,10 @@ async function searchRoutes() {
   }
 
   showPanel("routesPanel");
-  if (activeRouteId) await loadVehicleFeed(activeRouteId);
+  if (activeRouteId) {
+    await loadVehicleFeed(activeRouteId);
+    await loadRouteTimeline(activeRouteId);
+  }
 }
 
 function vehicleBadgeTone(lastSeenAt) {
@@ -1061,7 +1246,7 @@ function bindEvents() {
   });
   elements.logoutBtn.addEventListener("click", () => {
     clearAuthSession();
-    dashboardCache = { favorites: [], recentSearches: [], feedback: [] };
+    dashboardCache = { favorites: [], recentSearches: [], feedback: [], savedPlaces: [] };
     renderUserState();
     renderDashboardLists();
     switchScreen("login");
@@ -1100,6 +1285,9 @@ function bindEvents() {
   elements.endRouteBtn.addEventListener("click", endRoute);
   elements.reloadHealthBtn.addEventListener("click", loadHealth);
   elements.feedbackForm.addEventListener("submit", submitFeedback);
+  if (elements.savePlaceForm) elements.savePlaceForm.addEventListener("submit", savePlaceFromForm);
+  if (elements.useOriginForPlaceBtn) elements.useOriginForPlaceBtn.addEventListener("click", () => fillPlaceCoordinates("origin"));
+  if (elements.useDestinationForPlaceBtn) elements.useDestinationForPlaceBtn.addEventListener("click", () => fillPlaceCoordinates("destination"));
   if (elements.reloadAdminBtn) elements.reloadAdminBtn.addEventListener("click", loadAdminCenter);
 }
 

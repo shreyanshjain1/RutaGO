@@ -97,6 +97,7 @@
         <button class="drawer-link" data-panel="stopsPanel">📌 Stop List</button>
         <button class="drawer-link" data-panel="reminderPanel">🔔 Stop Reminder</button>
         <button class="drawer-link" data-panel="favoritesPanel">⭐ Favorites</button>
+        <button class="drawer-link" data-panel="savedPlacesPanel">🏠 Saved Places</button>
         <button class="drawer-link" data-panel="feedbackPanel">📝 Report Issue</button>
         <button class="drawer-link" data-panel="adminPanel">🛠️ Admin Center</button>
         <button class="drawer-link" data-panel="statusPanel">⚙️ App Status</button>
@@ -164,6 +165,10 @@
             </div>
             <button id="vehiclesBtn" class="mini-btn">Live Feed</button>
           </div>
+          <div class="section-label">Recommended Itinerary</div>
+          <div id="selectedItineraryCard" class="message-card small">Search a route to generate a step-by-step trip plan.</div>
+          <div class="section-label">Route Stop Timeline</div>
+          <div id="routeTimelineList" class="route-stack"></div>
           <div class="section-label">Direct Jeep Routes</div>
           <div id="directResults" class="route-stack"></div>
           <div class="section-label">Transfer Suggestions</div>
@@ -212,6 +217,50 @@
           <div id="favoritesList" class="route-stack"></div>
           <div class="section-label">Recent Searches</div>
           <div id="recentSearchesList" class="route-stack"></div>
+        </section>
+
+        <section id="savedPlacesPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Fast origin and destination presets</p>
+              <h2>Saved Places</h2>
+            </div>
+            <span class="status-pill">Account</span>
+          </div>
+          <form id="savePlaceForm" class="feedback-form">
+            <div class="coordinate-grid">
+              <label>
+                <span>Place label</span>
+                <input id="placeLabel" placeholder="Home, School, Dorm..." />
+              </label>
+              <label>
+                <span>Type</span>
+                <select id="placeType">
+                  <option value="school">School</option>
+                  <option value="home">Home</option>
+                  <option value="work">Work</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+            </div>
+            <div class="coordinate-grid">
+              <label>
+                <span>Latitude</span>
+                <input id="placeLat" placeholder="14.654000" />
+              </label>
+              <label>
+                <span>Longitude</span>
+                <input id="placeLon" placeholder="121.064000" />
+              </label>
+            </div>
+            <div class="quick-actions">
+              <button type="button" id="useOriginForPlaceBtn" class="outline-pill">Use Origin</button>
+              <button type="button" id="useDestinationForPlaceBtn" class="outline-pill">Use Destination</button>
+            </div>
+            <button class="primary-pill full-width" type="submit">Save Place</button>
+          </form>
+          <div class="section-label">My Saved Places</div>
+          <div id="savedPlacesList" class="route-stack"></div>
         </section>
 
         <section id="feedbackPanel" class="panel">

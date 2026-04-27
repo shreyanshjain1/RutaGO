@@ -12,6 +12,8 @@ const {
   addFavorite,
   deleteFavorite,
   addRecentSearch,
+  addSavedPlace,
+  deleteSavedPlace,
   addFeedback,
   listAllFeedback,
   updateFeedbackStatus,
@@ -245,6 +247,64 @@ function bearingDegrees(aLat, aLon, bLat, bLon) {
     Math.cos(lat1) * Math.sin(lat2) -
     Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+
+function buildRouteStopTimeline(routeId) {
+  const route = routeById.get(routeId);
+  const seq = routeToRepresentativeStops.get(routeId) || [];
+  return seq
+    .map((stopId, index) => {
+      const stop = stopById.get(stopId);
+      if (!stop) return null;
+      return {
+        stop_id: stop.stop_id,
+        stop_name: stop.stop_name,
+        stop_lat: stop.stop_lat,
+        stop_lon: stop.stop_lon,
+        sequence: index + 1,
+        route_id: routeId,
+        route_name: route ? route.route_long_name || route.route_short_name || routeId : routeId,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeSearchOption(option, rank) {
+  if (!option) return null;
+  const title = option.type === "transfer"
+    ? `${option.first_route_name} → ${option.second_route_name}`
+    : option.route_name;
+  const steps = option.type === "transfer"
+    ? [
+        `Walk to ${option.board_stop?.stop_name || "boarding stop"}.`,
+        `Ride ${option.first_route_name} until ${option.transfer_stop?.stop_name || "transfer stop"}.`,
+        `Transfer to ${option.second_route_name}.`,
+        `Get off at ${option.alight_stop?.stop_name || "destination stop"}.`,
+      ]
+    : [
+        `Walk to ${option.board_stop?.stop_name || "boarding stop"}.`,
+        `Ride ${option.route_name}.`,
+        `Get off at ${option.alight_stop?.stop_name || "destination stop"}.`,
+      ];
+
+  return {
+    rank,
+    type: option.type,
+    title,
+    board_stop: option.board_stop,
+    transfer_stop: option.transfer_stop || null,
+    alight_stop: option.alight_stop,
+    route_id: option.route_id || option.first_route_id,
+    second_route_id: option.second_route_id || null,
+    estimated_minutes: option.estimated_minutes,
+    walking_m: option.walking_m,
+    jeep_m: option.jeep_m,
+    transfers: option.transfers,
+    route_gap_stops: option.route_gap_stops,
+    quality_score: Math.round(Number(option.score || 0)),
+    steps,
+  };
 }
 
 function buildVehicleSnapshot(routeId, vehicleIndex = 0, timeMs = Date.now()) {
@@ -728,6 +788,16 @@ app.get("/api/stops/nearest", (req, res) => {
   res.redirect(307, `/mvp/stops/nearest${qs ? `?${qs}` : ""}`);
 });
 
+
+app.get("/api/routes/:routeId/stops", (req, res) => {
+  const routeId = req.params.routeId;
+  const route = routeById.get(routeId);
+  if (!route) return res.status(404).json({ error: "route_id not found" });
+  const data = buildRouteStopTimeline(routeId);
+  return res.json({ route, count: data.length, data });
+});
+
+
 app.get("/api/routes/:routeId/overlay", (req, res) => {
   res.redirect(307, `/mvp/routes/${encodeURIComponent(req.params.routeId)}/overlay`);
 });
@@ -782,6 +852,24 @@ app.post("/api/auth/login", (req, res) => {
 
 app.get("/api/me", requireUser, (req, res) => {
   return res.json({ user: publicUser(req.user), ...getDashboard(req.user.id) });
+});
+
+
+app.get("/api/users/me/saved-places", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).savedPlaces || [] });
+});
+
+app.post("/api/users/me/saved-places", requireUser, (req, res) => {
+  try {
+    return res.status(201).json(addSavedPlace(req.user.id, req.body || {}));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/users/me/saved-places/:placeId", requireUser, (req, res) => {
+  const removed = deleteSavedPlace(req.user.id, req.params.placeId);
+  return res.json({ removed });
 });
 
 app.get("/api/users/me/favorites", requireUser, (req, res) => {

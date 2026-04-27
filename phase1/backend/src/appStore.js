@@ -19,7 +19,7 @@ function ensureStore() {
   if (!fs.existsSync(storeFile)) {
     fs.writeFileSync(
       storeFile,
-      JSON.stringify({ users: [], favorites: [], recentSearches: [], feedback: [] }, null, 2)
+      JSON.stringify({ users: [], favorites: [], recentSearches: [], feedback: [], savedPlaces: [] }, null, 2)
     );
   }
 }
@@ -33,9 +33,10 @@ function readStore() {
       favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
       recentSearches: Array.isArray(parsed.recentSearches) ? parsed.recentSearches : [],
       feedback: Array.isArray(parsed.feedback) ? parsed.feedback : [],
+      savedPlaces: Array.isArray(parsed.savedPlaces) ? parsed.savedPlaces : [],
     };
   } catch (_err) {
-    return { users: [], favorites: [], recentSearches: [], feedback: [] };
+    return { users: [], favorites: [], recentSearches: [], feedback: [], savedPlaces: [] };
   }
 }
 
@@ -156,6 +157,7 @@ function getDashboard(userId) {
     favorites: store.favorites.filter((item) => item.user_id === userId),
     recentSearches: store.recentSearches.filter((item) => item.user_id === userId).slice(0, 10),
     feedback: store.feedback.filter((item) => item.user_id === userId).slice(0, 10),
+    savedPlaces: store.savedPlaces.filter((item) => item.user_id === userId).slice(0, 20),
   };
 }
 
@@ -260,6 +262,42 @@ function updateFeedbackStatus(feedbackId, status) {
   return item;
 }
 
+
+function addSavedPlace(userId, payload) {
+  const label = String(payload.label || "").trim();
+  const lat = Number(payload.lat);
+  const lon = Number(payload.lon);
+  const type = String(payload.type || "custom").trim().toLowerCase();
+  if (label.length < 2) throw new Error("Place label must be at least 2 characters.");
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Valid latitude and longitude are required.");
+
+  const store = readStore();
+  const place = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    label,
+    type: ["home", "school", "work", "custom"].includes(type) ? type : "custom",
+    lat: Number(lat.toFixed(6)),
+    lon: Number(lon.toFixed(6)),
+    created_at: new Date().toISOString(),
+  };
+
+  store.savedPlaces = store.savedPlaces.filter(
+    (item) => !(item.user_id === userId && item.label.toLowerCase() === label.toLowerCase())
+  );
+  store.savedPlaces.unshift(place);
+  writeStore(store);
+  return place;
+}
+
+function deleteSavedPlace(userId, placeId) {
+  const store = readStore();
+  const before = store.savedPlaces.length;
+  store.savedPlaces = store.savedPlaces.filter((item) => !(item.user_id === userId && item.id === placeId));
+  writeStore(store);
+  return before !== store.savedPlaces.length;
+}
+
 function getStoreStats() {
   const store = readStore();
   return {
@@ -269,6 +307,7 @@ function getStoreStats() {
     feedback_total: store.feedback.length,
     feedback_open: store.feedback.filter((item) => item.status === "open").length,
     feedback_resolved: store.feedback.filter((item) => item.status === "resolved").length,
+    saved_places: store.savedPlaces.length,
   };
 }
 
@@ -283,6 +322,8 @@ module.exports = {
   addFavorite,
   deleteFavorite,
   addRecentSearch,
+  addSavedPlace,
+  deleteSavedPlace,
   addFeedback,
   listAllFeedback,
   updateFeedbackStatus,

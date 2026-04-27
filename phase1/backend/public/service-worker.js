@@ -1,4 +1,5 @@
-const CACHE_NAME = "rutago-shell-v2";
+const CACHE_NAME = "rutago-shell-v3";
+const API_CACHE_NAME = "rutago-api-v1";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -18,10 +19,26 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      Promise.all(keys.filter((key) => ![CACHE_NAME, API_CACHE_NAME].includes(key)).map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
+
+async function networkFirst(request) {
+  const cache = await caches.open(API_CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch (_error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    return new Response(JSON.stringify({ error: "Offline. Cached API data is unavailable." }), {
+      headers: { "Content-Type": "application/json" },
+      status: 503
+    });
+  }
+}
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;
@@ -29,15 +46,8 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method !== "GET") return;
 
-  if (url.pathname.includes("/mvp/") || url.pathname.endsWith("/health") || url.pathname.endsWith("/routes") || url.pathname.endsWith("/stops") || url.pathname.endsWith("/plan")) {
-    event.respondWith(
-      fetch(request).catch(() =>
-        new Response(JSON.stringify({ error: "Offline. API data is unavailable." }), {
-          headers: { "Content-Type": "application/json" },
-          status: 503
-        })
-      )
-    );
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/mvp/") || ["/health", "/routes", "/stops", "/plan"].includes(url.pathname)) {
+    event.respondWith(networkFirst(request));
     return;
   }
 

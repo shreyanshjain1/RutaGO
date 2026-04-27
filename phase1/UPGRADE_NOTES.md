@@ -1,131 +1,45 @@
-# RutaGO Upgrade Notes
+# RutaGO Patch 3 Upgrade Notes
 
-This update turns RutaGO from a technical MVP into a stronger mobile-first product prototype.
+## Patch name
 
-## Added
+**Patch 3 — Smart Planner, Saved Places, Route Timeline, and Offline Cache**
 
-- Mockup-inspired splash screen
-- Mockup-inspired login screen
-- Orange RutaGO top bar
-- Hamburger drawer navigation
-- Full mobile map layout
-- Bottom-sheet planner UI
-- GPS “Use My Location” flow
-- Tap map to set Start and End
-- Route cards styled like the provided screenshot
-- Stop list screen
-- Stop search screen
-- Add Stop Reminder screen
-- Reminder popup/card when near stop
-- Browser notification support
-- Vibration support when approaching a stop
-- PWA manifest
-- Service worker shell cache
-- App icon SVG
-- Install prompt UI
-- API aliases under `/api/...`
-- Android GPS and notification permissions
-- Cleaner `.gitignore`
-- Comprehensive README
+## What this patch adds
 
-## Preserved
+- Saved Places feature for Home, School, Work, and custom locations
+- Reusable saved places as Start or End points
+- Account-backed saved places API
+- Route stop timeline endpoint
+- Route stop timeline UI inside Route Cards
+- Recommended itinerary card after every route search
+- Copy Trip Summary action
+- Better cached route fallback when the backend is unavailable
+- Service worker API cache upgrade
+- Offline-friendly route result fallback using the last successful search
+- Extra product polish for route planning UX
 
-- Existing Express backend
-- Existing GTFS CSV loading
-- Existing PostgreSQL/PostGIS optional setup
-- Existing `/mvp/...` route search endpoints
-- Existing Leaflet map dependency
-- Existing Capacitor mobile scaffold
-- Existing OTP planning support
-
-## Main Files Updated
+## New backend endpoints
 
 ```txt
-README.md
-phase1/README.md
-phase1/UPGRADE_NOTES.md
-phase1/.gitignore
-phase1/backend/public/index.html
-phase1/backend/public/style.css
-phase1/backend/public/app.js
-phase1/backend/public/rutago.config.js
-phase1/backend/public/manifest.webmanifest
-phase1/backend/public/service-worker.js
-phase1/backend/public/icons/rutago-icon.svg
-phase1/backend/src/server.js
-phase1/mobile/android/app/src/main/AndroidManifest.xml
+GET    /api/routes/:routeId/stops
+GET    /api/users/me/saved-places
+POST   /api/users/me/saved-places
+DELETE /api/users/me/saved-places/:placeId
 ```
 
-## Important Note
+## Why this matters
 
-The login screen is still frontend-only. It exists to match the mockup and improve demo flow. Real authentication should be added in a future backend update.
+Patch 1 added accounts, favorites, recents, and reports. Patch 2 stabilized the map and added Admin Center. Patch 3 improves the daily commuter experience by letting users save common places, inspect route stop timelines, copy trip summaries, and still recover their last search result when the backend or network is unstable.
 
-## Recommended Commit Message
+## Suggested next patch
 
-```bash
-git commit -m "feat: upgrade RutaGO mobile PWA route experience"
-```
+**Patch 4 — Route Data Manager / Admin CRUD**
 
-## Patch 1 — Accounts, Favorites, Recent Searches, and Feedback
+Recommended next features:
 
-This patch adds the first real product layer on top of the mobile-first route planner.
-
-### Added
-
-- Local account registration and login
-- Password hashing using Node.js crypto/scrypt
-- Signed bearer-token sessions
-- Authenticated `/api/me` dashboard endpoint
-- Saved favorite routes
-- Recent route search history
-- Feedback/report issue form
-- User-specific submitted feedback list
-- Frontend account chip and logout action
-- Favorites and Recent Searches drawer panel
-- Report Issue drawer panel
-- Advanced README with GitHub About, pins, topics, setup, roadmap, and API docs
-
-### Important Notes
-
-- This is a local development auth layer using a JSON file store at `phase1/backend/data/app-store.json`.
-- The JSON store is intentionally ignored by git.
-- For production, migrate these user tables into PostgreSQL and replace local bearer tokens with secure HTTP-only cookies or a stronger session strategy.
-
-## Patch 2 — Map Stability + Admin Center
-
-### Problem Fixed
-
-The map could appear broken or show incomplete OpenStreetMap tiles because Leaflet was initialized while the main app screen was still hidden behind the splash/login flow. Leaflet needs a visible container to calculate tile sizes correctly.
-
-### Technical Fixes
-
-- Added lazy map initialization through `ensureMap()`
-- Added safe `invalidateMapSafe()` calls after app screen changes
-- Added `ResizeObserver` for map container changes
-- Added orientation/resize handlers
-- Added tile loading and tile error UI
-- Updated default destination to remain inside UP Diliman
-- Added stronger Leaflet CSS safeguards
-
-### Product Additions
-
-- Admin Center screen
-- Admin summary stats
-- Admin route snapshot list
-- Admin feedback review list
-- Feedback status updates: `open`, `reviewing`, `resolved`, `dismissed`
-
-### New Admin APIs
-
-```txt
-GET /api/admin/summary
-GET /api/admin/feedback
-PATCH /api/admin/feedback/:feedbackId/status
-GET /api/admin/routes-summary
-```
-
-### Environment Variable
-
-```env
-ADMIN_EMAILS=your-email@example.com
-```
+- Admin add/edit/delete route records
+- Admin add/edit/delete stop records
+- Reorder stops in a route
+- Import/export route data JSON
+- Route availability toggle
+- Route issue resolution notes
