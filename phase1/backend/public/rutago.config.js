@@ -1,4 +1,7 @@
 window.RUTAGO_CONFIG = {
-  // Set to your deployed backend URL for mobile builds, e.g. "https://api.rutago.app"
   apiBaseUrl: "",
+  defaultCenter: [14.654, 121.064],
+  defaultZoom: 15,
+  reminderDistanceMeters: 150,
+  nearestStopRadiusMeters: 300
 };

@@ -1,103 +1,141 @@
-# RutaGO Phase 1 Setup
+# RutaGO Phase 1 / Phase 2 MVP
 
-This folder contains a practical starter implementation for:
-1. Data acquisition and GTFS preparation
-2. OpenTripPlanner (OTP) setup
-3. PostgreSQL + PostGIS schema
-4. Node.js backend APIs
+This folder contains the working RutaGO MVP: an Express backend, GTFS data support, Leaflet mobile frontend, optional PostgreSQL/PostGIS support, optional OpenTripPlanner support, and Capacitor mobile scaffolding.
 
-## Folder Structure
+The latest upgrade adds a mobile-first PWA interface inspired by the RutaGO mockup, GPS-based route planning controls, stop reminders, route cards, stop search, and installable-app support.
 
-- `scripts/prepare_phase1_data.ps1` - validates GTFS and prepares phase1 outputs
-- `data/prepared/` - prepared GTFS subset output (`routes`, `stops`, `trips`)
-- `otp/` - OTP setup notes and commands
-- `db/schema.sql` - PostgreSQL + PostGIS schema
-- `backend/` - Node.js API server
+---
 
-## Step 1: Acquire and Prepare Data
+## Quick Run
 
-If you already have `qc_subset/`, run:
-
-```powershell
-Set-Location c:\Users\sugz1\Downloads\manila
-.\phase1\scripts\prepare_phase1_data.ps1 -SourceDir .\qc_subset -OutputDir .\phase1\data\prepared
-```
-
-The script validates:
-- `routes.txt`
-- `stops.txt`
-- `shapes.txt`
-
-And writes:
-- `phase1/data/prepared/routes.txt`
-- `phase1/data/prepared/stops.txt`
-- `phase1/data/prepared/trips.txt`
-
-## Step 2: Setup Routing Engine (OpenTripPlanner)
-
-See `otp/README.md` for full instructions.
-
-Typical commands after placing `otp.jar` in `phase1/otp/`:
-
-```powershell
-Set-Location c:\Users\sugz1\Downloads\manila\phase1\otp
-java -jar .\otp.jar --build ..\data\prepared
-java -jar .\otp.jar --serve ..\data\prepared
-```
-
-## Step 3: Setup Database (PostgreSQL + PostGIS)
-
-Run schema:
-
-```sql
-\i phase1/db/schema.sql
-```
-
-Creates tables:
-- `routes`
-- `stops`
-- `trips`
-- `stop_times`
-- `vehicles`
-- `users`
-- `reports`
-
-## Step 4: Backend API Setup (Node.js)
-
-Install and run:
-
-```powershell
-Set-Location c:\Users\sugz1\Downloads\manila\phase1\backend
+```bash
+cd phase1/backend
 npm install
 npm run dev
 ```
 
-APIs:
-- `GET /routes`
-- `GET /stops`
-- `GET /plan?from=lat,lng&to=lat,lng`
+Open:
 
-Notes:
-- `/plan` now prefers transit itineraries (`TRANSIT,WALK`) and falls back to walk when transit is unavailable in OTP.
-- Override OTP behavior with `OTP_TRANSIT_PREFERRED`, `OTP_ALLOW_WALK_FALLBACK`, and `OTP_MAX_WALK_METERS` in `.env`.
-- Set `USE_POSTGRES=true` and `DATABASE_URL=postgresql://...` to load transit search data from PostgreSQL instead of CSV memory.
-- Set `AUTO_IMPORT_GTFS_TO_DB=true` to seed GTFS tables (`routes`, `stops`, `trips`, `stop_times`) from prepared CSVs on startup.
+```txt
+http://localhost:3000
+```
 
-## Step 5: Package for Android and iOS (Capacitor)
+---
 
-```powershell
-Set-Location c:\Users\sugz1\Downloads\manila\phase1\mobile
+## What is Included
+
+```txt
+backend/         Express API and web frontend
+backend/public/  Mobile UI, Leaflet app, PWA files
+backend/src/     Server, CSV store, DB store
+data/prepared/   Prepared GTFS files
+db/              PostgreSQL schema
+mobile/          Capacitor Android/iOS wrapper
+```
+
+---
+
+## Main User Features
+
+- Splash screen
+- Login-style entry screen
+- Mobile app layout
+- Full-screen map
+- Use My Location
+- Tap map to set Start and End
+- Find jeepney routes
+- Direct route cards
+- Transfer suggestion cards
+- Nearby stop finder
+- Stop search
+- Add Stop Reminder
+- In-app and browser notification reminder
+- PWA install support
+
+---
+
+## Main API Endpoints
+
+```txt
+GET /health
+GET /routes
+GET /stops
+GET /mvp/search?from=lat,lng&to=lat,lng
+GET /mvp/stops/nearest?lat=lat&lon=lng&radius=300
+GET /mvp/routes/:routeId/overlay
+GET /mvp/vehicles
+GET /plan?from=lat,lng&to=lat,lng
+```
+
+Cleaner aliases are also available:
+
+```txt
+GET /api/routes
+GET /api/stops
+GET /api/search
+GET /api/stops/nearest
+GET /api/routes/:routeId/overlay
+GET /api/vehicles
+GET /api/plan
+```
+
+---
+
+## Frontend Config
+
+Edit:
+
+```txt
+backend/public/rutago.config.js
+```
+
+```js
+window.RUTAGO_CONFIG = {
+  apiBaseUrl: "",
+  defaultCenter: [14.654, 121.064],
+  defaultZoom: 15,
+  reminderDistanceMeters: 150,
+  nearestStopRadiusMeters: 300
+};
+```
+
+---
+
+## Mobile / Capacitor
+
+```bash
+cd phase1/mobile
 npm install
-npm run add:android
-npm run add:ios
-npm run sync
+npx cap sync android
+npx cap open android
 ```
 
-Then open native IDEs:
+Android permissions for GPS and notifications are already added to:
 
-```powershell
-npm run open:android
-npm run open:ios
+```txt
+mobile/android/app/src/main/AndroidManifest.xml
 ```
 
-Before packaging, set the backend URL in `phase1/backend/public/rutago.config.js`.
+---
+
+## Do Not Commit
+
+The `.gitignore` excludes:
+
+```txt
+node_modules/
+backend/node_modules/
+mobile/node_modules/
+backend/.env
+mobile/android/app/build/
+```
+
+---
+
+## Recommended Commit
+
+```bash
+git add .
+git commit -m "feat: upgrade RutaGO mobile PWA route experience"
+git push
+```

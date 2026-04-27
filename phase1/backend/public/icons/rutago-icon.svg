@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#55c8e9"/>
+  <rect x="42" y="262" width="428" height="146" rx="42" fill="#ffbd4a" stroke="#111" stroke-width="14"/>
+  <text x="255" y="354" text-anchor="middle" font-family="Arial Black, Baloo 2, sans-serif" font-size="86" font-style="italic" fill="#111">RUTA</text>
+  <circle cx="158" cy="408" r="30" fill="#444" stroke="#111" stroke-width="12"/>
+  <circle cx="354" cy="408" r="30" fill="#444" stroke="#111" stroke-width="12"/>
+  <path d="M96 218 C130 144 206 134 246 188 C302 116 406 139 420 218 Z" fill="#eefaff" opacity=".95"/>
+</svg>
