@@ -873,3 +873,88 @@ input:focus {
 .login-field input:focus {
   border-color: #ff9f1c;
 }
+
+/* Patch 2: Leaflet stability and admin UI polish */
+.leaflet-container,
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+  max-width: none !important;
+}
+
+.map-shell {
+  contain: layout size style;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  min-height: 100vh;
+  background: #b9d7df;
+}
+
+.map-loading-card {
+  position: absolute;
+  z-index: 7;
+  left: 14px;
+  top: calc(130px + env(safe-area-inset-top));
+  right: 14px;
+  border: 2px dashed var(--ink);
+  border-radius: 16px;
+  background: rgba(255, 244, 207, 0.95);
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.admin-stat {
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  background: #fff7dc;
+  padding: 10px;
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.16);
+}
+
+.admin-stat strong {
+  display: block;
+  font-family: "Baloo 2", cursive;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.admin-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+code {
+  font-weight: 900;
+  background: #fff;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 1px 4px;
+}

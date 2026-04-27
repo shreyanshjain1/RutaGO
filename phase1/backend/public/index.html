@@ -98,6 +98,7 @@
         <button class="drawer-link" data-panel="reminderPanel">🔔 Stop Reminder</button>
         <button class="drawer-link" data-panel="favoritesPanel">⭐ Favorites</button>
         <button class="drawer-link" data-panel="feedbackPanel">📝 Report Issue</button>
+        <button class="drawer-link" data-panel="adminPanel">🛠️ Admin Center</button>
         <button class="drawer-link" data-panel="statusPanel">⚙️ App Status</button>
         <button id="logoutBtn" class="drawer-link drawer-danger" type="button">🚪 Logout</button>
         <div class="drawer-note">
@@ -250,6 +251,23 @@
           </form>
           <div class="section-label">My Submitted Reports</div>
           <div id="feedbackList" class="route-stack"></div>
+        </section>
+
+
+        <section id="adminPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Route operations</p>
+              <h2>Admin Center</h2>
+            </div>
+            <button id="reloadAdminBtn" class="mini-btn">Reload</button>
+          </div>
+          <div id="adminGate" class="message-card small">Admin access requires your email to be listed in <code>ADMIN_EMAILS</code>.</div>
+          <div id="adminSummary" class="admin-grid"></div>
+          <div class="section-label">Open Feedback Reports</div>
+          <div id="adminFeedbackList" class="route-stack"></div>
+          <div class="section-label">Route Data Snapshot</div>
+          <div id="adminRoutesList" class="route-stack"></div>
         </section>
 
         <section id="statusPanel" class="panel">

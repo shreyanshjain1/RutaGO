@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const {
   publicUser,
   requireUser,
+  requireAdmin,
   registerUser,
   loginUser,
   getDashboard,
@@ -12,6 +13,9 @@ const {
   deleteFavorite,
   addRecentSearch,
   addFeedback,
+  listAllFeedback,
+  updateFeedbackStatus,
+  getStoreStats,
 } = require("./appStore");
 
 const {
@@ -815,6 +819,48 @@ app.post("/api/feedback", requireUser, (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+});
+
+
+app.get("/api/admin/summary", requireAdmin, (_req, res) => {
+  return res.json({
+    app: getStoreStats(),
+    transit: {
+      data_source: dataSource,
+      routes: routes.length,
+      stops: stops.length,
+      trips: trips.length,
+      stop_times: stopTimes.length,
+    },
+  });
+});
+
+app.get("/api/admin/feedback", requireAdmin, (_req, res) => {
+  return res.json({ data: listAllFeedback() });
+});
+
+app.patch("/api/admin/feedback/:feedbackId/status", requireAdmin, (req, res) => {
+  try {
+    const data = updateFeedbackStatus(req.params.feedbackId, req.body?.status);
+    return res.json({ data });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/routes-summary", requireAdmin, (_req, res) => {
+  const data = routes.slice(0, 80).map((route) => {
+    const sequence = routeToRepresentativeStops.get(route.route_id) || [];
+    return {
+      route_id: route.route_id,
+      route_short_name: route.route_short_name,
+      route_long_name: route.route_long_name,
+      stop_count: sequence.length,
+      first_stop: stopById.get(sequence[0])?.stop_name || "",
+      last_stop: stopById.get(sequence[sequence.length - 1])?.stop_name || "",
+    };
+  });
+  return res.json({ count: data.length, data });
 });
 
 app.get("/mvp/demo-notification", (req, res) => {

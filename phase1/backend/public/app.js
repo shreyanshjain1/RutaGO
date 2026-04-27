@@ -100,6 +100,11 @@ const elements = {
   feedbackMessage: $("feedbackMessage"),
   feedbackList: $("feedbackList"),
   dashboardMessage: $("dashboardMessage"),
+  adminGate: $("adminGate"),
+  adminSummary: $("adminSummary"),
+  adminFeedbackList: $("adminFeedbackList"),
+  adminRoutesList: $("adminRoutesList"),
+  reloadAdminBtn: $("reloadAdminBtn"),
   installToast: $("installToast"),
   installBtn: $("installBtn"),
   dismissInstallBtn: $("dismissInstallBtn"),
@@ -128,7 +133,10 @@ function switchScreen(screenName) {
   if (screenName === "login") elements.loginScreen.classList.add("is-active");
   if (screenName === "app") {
     elements.appScreen.classList.add("is-active");
-    setTimeout(() => map && map.invalidateSize(), 150);
+    setTimeout(() => {
+      ensureMap();
+      invalidateMapSafe();
+    }, 150);
   }
   if (screenName === "splash") elements.splashScreen.classList.add("is-active");
 }
@@ -142,6 +150,8 @@ function showPanel(panelId) {
   if (panel) panel.classList.add("is-active");
   closeDrawer();
   if (panelId === "favoritesPanel" || panelId === "feedbackPanel") refreshDashboard();
+  if (panelId === "adminPanel") loadAdminCenter();
+  setTimeout(invalidateMapSafe, 80);
 }
 
 function openDrawer() {
@@ -360,7 +370,12 @@ function renderDashboardLists() {
         card.addEventListener("click", () => {
           elements.originInput.value = item.origin;
           elements.destinationInput.value = item.destination;
+          const origin = parseLatLng(item.origin);
+          const destination = parseLatLng(item.destination);
+          if (origin) setMarker("origin", origin.lat, origin.lng, false);
+          if (destination) setMarker("destination", destination.lat, destination.lng, false);
           showPanel("plannerPanel");
+          invalidateMapSafe();
         });
         elements.recentSearchesList.appendChild(card);
       });
@@ -482,7 +497,7 @@ function renderSelectedReminder() {
 
 async function loadOverlay(routeId, color) {
   if (!routeId) return;
-  const resp = await apiFetch(`/mvp/routes/${encodeURIComponent(routeId)}/overlay`);
+  const resp = await apiFetch(`/api/routes/${encodeURIComponent(routeId)}/overlay`);
   if (!resp.ok) return;
   const body = await resp.json();
   if (!body.points || !body.points.length) return;
@@ -518,7 +533,7 @@ async function searchRoutes() {
   setSummary("Searching jeepney routes and transfer suggestions...");
   showPanel("plannerPanel");
 
-  const resp = await apiFetch(`/mvp/search?from=${encodeURIComponent(elements.originInput.value)}&to=${encodeURIComponent(elements.destinationInput.value)}`);
+  const resp = await apiFetch(`/api/search?from=${encodeURIComponent(elements.originInput.value)}&to=${encodeURIComponent(elements.destinationInput.value)}`);
   if (!resp.ok) {
     setSummary("Search failed. Check if the backend is running, then try again.");
     showPanel("routesPanel");
@@ -613,7 +628,7 @@ async function loadVehicleFeed(routeId = null) {
   vehicleLayer.clearLayers();
   elements.vehicleResults.innerHTML = "";
   const query = routeId ? `?route_id=${encodeURIComponent(routeId)}&limit=3` : "?limit=8";
-  const resp = await apiFetch(`/mvp/vehicles${query}`);
+  const resp = await apiFetch(`/api/vehicles${query}`);
   if (!resp.ok) {
     elements.vehicleSummary.textContent = "Vehicle feed is unavailable right now.";
     showEmpty(elements.vehicleResults, "No vehicle snapshots available.");
@@ -665,7 +680,7 @@ async function loadNearestStops() {
     return;
   }
 
-  const resp = await apiFetch(`/mvp/stops/nearest?lat=${from.lat}&lon=${from.lng}&radius=${NEAREST_STOP_RADIUS_METERS}`);
+  const resp = await apiFetch(`/api/stops/nearest?lat=${from.lat}&lon=${from.lng}&radius=${NEAREST_STOP_RADIUS_METERS}`);
   if (!resp.ok) {
     setSummary("Nearest stop lookup failed.");
     showPanel("stopsPanel");
@@ -699,7 +714,7 @@ async function loadNearestStops() {
 
 async function loadStopsCache() {
   if (allStopsCache.length) return allStopsCache;
-  const resp = await apiFetch("/stops");
+  const resp = await apiFetch("/api/stops");
   if (!resp.ok) return [];
   const body = await resp.json();
   allStopsCache = body.data || [];
@@ -835,24 +850,180 @@ async function submitFeedback(event) {
   await refreshDashboard();
 }
 
+function invalidateMapSafe() {
+  if (!map) return;
+  requestAnimationFrame(() => {
+    map.invalidateSize({ pan: false });
+  });
+}
+
+function ensureMap() {
+  if (map) {
+    invalidateMapSafe();
+    return map;
+  }
+  return initMap();
+}
+
+function showMapLoading(message) {
+  const shell = document.querySelector(".map-shell");
+  if (!shell) return;
+  let card = document.getElementById("mapLoadingCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "mapLoadingCard";
+    card.className = "map-loading-card";
+    shell.appendChild(card);
+  }
+  card.textContent = message;
+  card.hidden = false;
+}
+
+function hideMapLoading() {
+  const card = document.getElementById("mapLoadingCard");
+  if (card) card.hidden = true;
+}
+
+
+async function loadAdminCenter() {
+  if (!elements.adminGate || !elements.adminSummary || !elements.adminFeedbackList || !elements.adminRoutesList) return;
+
+  const user = getCurrentUser();
+  if (!user || user.role !== "admin") {
+    elements.adminGate.innerHTML = "Admin access requires a signed-in admin account. Add your email to <code>ADMIN_EMAILS</code> in <code>.env</code>, restart the backend, then create/login with that email.";
+    elements.adminSummary.innerHTML = "";
+    showEmpty(elements.adminFeedbackList, "No admin data loaded.");
+    showEmpty(elements.adminRoutesList, "No route snapshot loaded.");
+    return;
+  }
+
+  elements.adminGate.textContent = `Signed in as admin: ${user.email}`;
+  elements.adminSummary.innerHTML = "";
+  elements.adminFeedbackList.innerHTML = "";
+  elements.adminRoutesList.innerHTML = "";
+
+  const [summaryResp, feedbackResp, routesResp] = await Promise.all([
+    apiFetch("/api/admin/summary"),
+    apiFetch("/api/admin/feedback"),
+    apiFetch("/api/admin/routes-summary"),
+  ]);
+
+  if (!summaryResp.ok || !feedbackResp.ok || !routesResp.ok) {
+    elements.adminGate.textContent = "Admin data could not be loaded. Check your account role and backend logs.";
+    return;
+  }
+
+  const summary = await summaryResp.json();
+  const feedback = await feedbackResp.json();
+  const routeSnapshot = await routesResp.json();
+  const stats = [
+    [summary.app.users, "Users"],
+    [summary.app.feedback_open, "Open reports"],
+    [summary.transit.routes, "GTFS routes"],
+    [summary.transit.stops, "GTFS stops"],
+  ];
+  elements.adminSummary.innerHTML = stats.map(([value, label]) => `<div class="admin-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+  if (!feedback.data.length) {
+    showEmpty(elements.adminFeedbackList, "No feedback reports yet.");
+  } else {
+    feedback.data.slice(0, 12).forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "stop-card";
+      card.innerHTML = `
+        <div class="stop-card-title">${item.type || "general"} · ${item.status}</div>
+        <div class="stop-card-meta">${item.message}</div>
+        <div class="stop-card-meta">${item.user_name} ${item.route_id ? `· Route ${item.route_id}` : ""} ${item.stop_id ? `· Stop ${item.stop_id}` : ""}</div>
+        <div class="admin-actions">
+          <button class="mini-btn admin-status" data-id="${item.id}" data-status="reviewing">Reviewing</button>
+          <button class="mini-btn admin-status" data-id="${item.id}" data-status="resolved">Resolved</button>
+          <button class="mini-btn admin-status" data-id="${item.id}" data-status="dismissed">Dismiss</button>
+        </div>
+      `;
+      elements.adminFeedbackList.appendChild(card);
+    });
+  }
+
+  routeSnapshot.data.slice(0, 12).forEach((route) => {
+    const card = document.createElement("article");
+    card.className = "route-card";
+    card.style.setProperty("--route-color", "#ffbd4a");
+    card.innerHTML = `
+      <div class="route-card-title">${route.route_short_name || route.route_id}</div>
+      <div class="route-card-meta">${route.route_long_name || "No route name"}</div>
+      <div class="route-card-line"><span>${route.first_stop || "Start"}</span><span>→</span><span>${route.last_stop || "End"}</span></div>
+      <div class="route-tag-row"><span class="status-pill">${route.stop_count} stops</span></div>
+    `;
+    elements.adminRoutesList.appendChild(card);
+  });
+
+  document.querySelectorAll(".admin-status").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await apiFetch(`/api/admin/feedback/${button.dataset.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: button.dataset.status }),
+      });
+      await loadAdminCenter();
+    });
+  });
+}
+
 function initMap() {
-  map = L.map("map", { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+  const mapElement = $("map");
+  if (!mapElement) return null;
+
+  map = L.map("map", {
+    zoomControl: false,
+    preferCanvas: true,
+    inertia: true,
+    maxBoundsViscosity: 0.6,
+  }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
   L.control.zoom({ position: "bottomright" }).addTo(map);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+  const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    minZoom: 11,
+    attribution: "© OpenStreetMap contributors",
+    crossOrigin: true,
+    updateWhenIdle: true,
+    keepBuffer: 4,
+  }).addTo(map);
+
+  showMapLoading("Loading map tiles…");
+  tileLayer.on("load", hideMapLoading);
+  tileLayer.on("tileerror", () => showMapLoading("Map tiles are having trouble loading. Check internet connection, then reload."));
 
   nearestLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
   vehicleLayer = L.layerGroup().addTo(map);
 
-  setMarker("origin", 14.6535, 121.049, false);
-  setMarker("destination", 14.5995, 120.984, false);
+  const defaultOrigin = CONFIG.defaultOrigin || [14.6535, 121.049];
+  const defaultDestination = CONFIG.defaultDestination || [14.6547, 121.0648];
+  setMarker("origin", defaultOrigin[0], defaultOrigin[1], false);
+  setMarker("destination", defaultDestination[0], defaultDestination[1], false);
+  map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
 
   map.on("click", (e) => {
     if (!mapClickMode) return;
     setMarker(mapClickMode, e.latlng.lat, e.latlng.lng, false);
     setMapMode(`${mapClickMode === "origin" ? "Start" : "End"} selected. You can find routes now.`);
     mapClickMode = null;
+    invalidateMapSafe();
   });
+
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(() => invalidateMapSafe());
+    observer.observe(mapElement);
+    const app = $("appScreen");
+    if (app) observer.observe(app);
+  }
+
+  window.addEventListener("resize", invalidateMapSafe);
+  window.addEventListener("orientationchange", () => setTimeout(invalidateMapSafe, 250));
+
+  setTimeout(invalidateMapSafe, 100);
+  setTimeout(invalidateMapSafe, 500);
+  return map;
 }
 
 function registerServiceWorker() {
@@ -902,12 +1073,18 @@ function bindEvents() {
   document.querySelectorAll(".drawer-link").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panel)));
 
   elements.locateBtn.addEventListener("click", locateUser);
-  elements.centerUpBtn.addEventListener("click", () => map.setView(DEFAULT_CENTER, DEFAULT_ZOOM));
+  elements.centerUpBtn.addEventListener("click", () => {
+    ensureMap();
+    map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    invalidateMapSafe();
+  });
   elements.setOriginBtn.addEventListener("click", () => {
+    ensureMap();
     mapClickMode = "origin";
     setMapMode("Tap the map to set Start");
   });
   elements.setDestinationBtn.addEventListener("click", () => {
+    ensureMap();
     mapClickMode = "destination";
     setMapMode("Tap the map to set End");
   });
@@ -923,9 +1100,10 @@ function bindEvents() {
   elements.endRouteBtn.addEventListener("click", endRoute);
   elements.reloadHealthBtn.addEventListener("click", loadHealth);
   elements.feedbackForm.addEventListener("submit", submitFeedback);
+  if (elements.reloadAdminBtn) elements.reloadAdminBtn.addEventListener("click", loadAdminCenter);
 }
 
-initMap();
+
 bindEvents();
 registerServiceWorker();
 setupInstallPrompt();

@@ -90,3 +90,42 @@ This patch adds the first real product layer on top of the mobile-first route pl
 - This is a local development auth layer using a JSON file store at `phase1/backend/data/app-store.json`.
 - The JSON store is intentionally ignored by git.
 - For production, migrate these user tables into PostgreSQL and replace local bearer tokens with secure HTTP-only cookies or a stronger session strategy.
+
+## Patch 2 — Map Stability + Admin Center
+
+### Problem Fixed
+
+The map could appear broken or show incomplete OpenStreetMap tiles because Leaflet was initialized while the main app screen was still hidden behind the splash/login flow. Leaflet needs a visible container to calculate tile sizes correctly.
+
+### Technical Fixes
+
+- Added lazy map initialization through `ensureMap()`
+- Added safe `invalidateMapSafe()` calls after app screen changes
+- Added `ResizeObserver` for map container changes
+- Added orientation/resize handlers
+- Added tile loading and tile error UI
+- Updated default destination to remain inside UP Diliman
+- Added stronger Leaflet CSS safeguards
+
+### Product Additions
+
+- Admin Center screen
+- Admin summary stats
+- Admin route snapshot list
+- Admin feedback review list
+- Feedback status updates: `open`, `reviewing`, `resolved`, `dismissed`
+
+### New Admin APIs
+
+```txt
+GET /api/admin/summary
+GET /api/admin/feedback
+PATCH /api/admin/feedback/:feedbackId/status
+GET /api/admin/routes-summary
+```
+
+### Environment Variable
+
+```env
+ADMIN_EMAILS=your-email@example.com
+```

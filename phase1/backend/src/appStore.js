@@ -5,6 +5,14 @@ const crypto = require("crypto");
 const dataDir = path.resolve(__dirname, "../data");
 const storeFile = path.join(dataDir, "app-store.json");
 const sessionSecret = process.env.SESSION_SECRET || "rutago-local-dev-secret-change-me";
+const adminEmails = String(process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+
+function isAdminEmail(email) {
+  return adminEmails.includes(normalizeEmail(email));
+}
 
 function ensureStore() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
@@ -41,7 +49,7 @@ function publicUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role || "commuter",
+    role: isAdminEmail(user.email) ? "admin" : (user.role || "commuter"),
     created_at: user.created_at,
   };
 }
@@ -97,6 +105,15 @@ function requireUser(req, res, next) {
   return next();
 }
 
+function requireAdmin(req, res, next) {
+  const user = getUserFromRequest(req);
+  if (!user) return res.status(401).json({ error: "Authentication required" });
+  const visibleUser = publicUser(user);
+  if (visibleUser.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+  req.user = user;
+  return next();
+}
+
 function registerUser({ name, email, password }) {
   const cleanName = String(name || "").trim();
   const cleanEmail = normalizeEmail(email);
@@ -115,7 +132,7 @@ function registerUser({ name, email, password }) {
     name: cleanName,
     email: cleanEmail,
     password_hash: createPasswordHash(cleanPassword),
-    role: "commuter",
+    role: isAdminEmail(cleanEmail) ? "admin" : "commuter",
     created_at: new Date().toISOString(),
   };
   store.users.push(user);
@@ -215,10 +232,51 @@ function addFeedback(userId, payload) {
   return item;
 }
 
+function listAllFeedback() {
+  const store = readStore();
+  return store.feedback
+    .map((item) => {
+      const user = store.users.find((candidate) => candidate.id === item.user_id);
+      return {
+        ...item,
+        user_name: user ? user.name : "Unknown user",
+        user_email: user ? user.email : "",
+      };
+    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+}
+
+function updateFeedbackStatus(feedbackId, status) {
+  const allowed = new Set(["open", "reviewing", "resolved", "dismissed"]);
+  const cleanStatus = String(status || "").trim().toLowerCase();
+  if (!allowed.has(cleanStatus)) throw new Error("Invalid feedback status.");
+
+  const store = readStore();
+  const item = store.feedback.find((feedback) => feedback.id === feedbackId);
+  if (!item) throw new Error("Feedback report not found.");
+  item.status = cleanStatus;
+  item.updated_at = new Date().toISOString();
+  writeStore(store);
+  return item;
+}
+
+function getStoreStats() {
+  const store = readStore();
+  return {
+    users: store.users.length,
+    favorites: store.favorites.length,
+    recent_searches: store.recentSearches.length,
+    feedback_total: store.feedback.length,
+    feedback_open: store.feedback.filter((item) => item.status === "open").length,
+    feedback_resolved: store.feedback.filter((item) => item.status === "resolved").length,
+  };
+}
+
 module.exports = {
   publicUser,
   getUserFromRequest,
   requireUser,
+  requireAdmin,
   registerUser,
   loginUser,
   getDashboard,
@@ -226,4 +284,7 @@ module.exports = {
   deleteFavorite,
   addRecentSearch,
   addFeedback,
+  listAllFeedback,
+  updateFeedbackStatus,
+  getStoreStats,
 };

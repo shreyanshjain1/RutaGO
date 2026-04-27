@@ -58,3 +58,30 @@ backend/data/app-store.json
 ```
 
 It is ignored by git and should not be committed.
+
+---
+
+## Patch 2 Notes
+
+This phase now includes a mobile map stability fix and a lightweight Admin Center.
+
+### Map Fix
+
+The Leaflet map is now initialized only after the app screen is visible. This prevents broken or partially-loaded map tiles after the splash/login screen.
+
+### Admin Center
+
+To enable admin access:
+
+```env
+ADMIN_EMAILS=your-email@example.com
+```
+
+Restart the backend, then register/login with that email.
+
+Admin tools include:
+
+- App/transit summary
+- Route data snapshot
+- Feedback reports list
+- Report status updates

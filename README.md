@@ -418,3 +418,52 @@ feat: add accounts, favorites, recent searches, and feedback reporting
 ## License
 
 This project currently includes the original repository license. Keep the same license unless the maintainers decide otherwise.
+
+---
+
+## Patch 2 Update — Map Stability + Admin Center
+
+This patch fixes the broken Leaflet map behavior shown when the map loads while the app is still hidden behind the splash/login screens.
+
+### Added / Fixed
+
+- Deferred Leaflet map initialization until the main app screen is visible
+- Added safe `invalidateSize()` handling after screen changes, drawer actions, resize, and orientation changes
+- Added tile loading/error feedback card
+- Fixed default destination coordinates so the demo starts around UP Diliman instead of Manila Bay
+- Added stronger Leaflet CSS rules to prevent broken tile sizing
+- Moved client calls from old `/mvp/...` routes to cleaner `/api/...` aliases
+- Added Admin Center screen
+- Added admin summary stats
+- Added feedback report review workflow
+- Added route data snapshot for maintainers
+- Added admin API endpoints
+- Added `ADMIN_EMAILS` environment setting
+
+### Admin Setup
+
+Add your admin email to `phase1/backend/.env`:
+
+```env
+ADMIN_EMAILS=your-email@example.com
+```
+
+Then restart the backend and sign up or login using that email. The app will show your role as `admin` and the Admin Center will load route/report management tools.
+
+### Patch 2 Commit Message
+
+```bash
+git add .
+git commit -m "feat: add admin center and stabilize mobile map"
+git push
+```
+
+### Patch 2 PR Title
+
+```txt
+feat: add admin center and stabilize mobile map
+```
+
+### Patch 2 Short Description
+
+Fixes the broken Leaflet map rendering issue by initializing the map only after the mobile app screen is visible and adding resize/orientation safeguards. Also introduces the first Admin Center for maintainers to review feedback reports, view route data snapshots, and monitor basic app/transit stats.
