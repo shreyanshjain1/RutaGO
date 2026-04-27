@@ -65,3 +65,28 @@ The login screen is still frontend-only. It exists to match the mockup and impro
 ```bash
 git commit -m "feat: upgrade RutaGO mobile PWA route experience"
 ```
+
+## Patch 1 — Accounts, Favorites, Recent Searches, and Feedback
+
+This patch adds the first real product layer on top of the mobile-first route planner.
+
+### Added
+
+- Local account registration and login
+- Password hashing using Node.js crypto/scrypt
+- Signed bearer-token sessions
+- Authenticated `/api/me` dashboard endpoint
+- Saved favorite routes
+- Recent route search history
+- Feedback/report issue form
+- User-specific submitted feedback list
+- Frontend account chip and logout action
+- Favorites and Recent Searches drawer panel
+- Report Issue drawer panel
+- Advanced README with GitHub About, pins, topics, setup, roadmap, and API docs
+
+### Important Notes
+
+- This is a local development auth layer using a JSON file store at `phase1/backend/data/app-store.json`.
+- The JSON store is intentionally ignored by git.
+- For production, migrate these user tables into PostgreSQL and replace local bearer tokens with secure HTTP-only cookies or a stronger session strategy.

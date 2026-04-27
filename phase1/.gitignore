@@ -28,3 +28,6 @@ mobile/ios/App/App.xcworkspace/
 __MACOSX/
 .vscode/
 .idea/
+
+# Local generated account/favorites/feedback store
+backend/data/app-store.json

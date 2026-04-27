@@ -2,6 +2,17 @@ const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const {
+  publicUser,
+  requireUser,
+  registerUser,
+  loginUser,
+  getDashboard,
+  addFavorite,
+  deleteFavorite,
+  addRecentSearch,
+  addFeedback,
+} = require("./appStore");
 
 const {
   loadRoutes,
@@ -744,6 +755,66 @@ app.get("/api/stops", (req, res) => {
 app.get("/api/plan", (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
   res.redirect(307, `/plan${qs ? `?${qs}` : ""}`);
+});
+
+
+app.post("/api/auth/register", (req, res) => {
+  try {
+    const result = registerUser(req.body || {});
+    return res.status(201).json(result);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/auth/login", (req, res) => {
+  try {
+    const result = loginUser(req.body || {});
+    return res.json(result);
+  } catch (err) {
+    return res.status(401).json({ error: err.message });
+  }
+});
+
+app.get("/api/me", requireUser, (req, res) => {
+  return res.json({ user: publicUser(req.user), ...getDashboard(req.user.id) });
+});
+
+app.get("/api/users/me/favorites", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).favorites });
+});
+
+app.post("/api/users/me/favorites", requireUser, (req, res) => {
+  try {
+    return res.status(201).json({ data: addFavorite(req.user.id, req.body || {}) });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/users/me/favorites/:favoriteId", requireUser, (req, res) => {
+  const deleted = deleteFavorite(req.user.id, req.params.favoriteId);
+  return res.json({ ok: deleted });
+});
+
+app.get("/api/users/me/recent-searches", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).recentSearches });
+});
+
+app.post("/api/users/me/recent-searches", requireUser, (req, res) => {
+  return res.status(201).json({ data: addRecentSearch(req.user.id, req.body || {}) });
+});
+
+app.get("/api/users/me/feedback", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).feedback });
+});
+
+app.post("/api/feedback", requireUser, (req, res) => {
+  try {
+    return res.status(201).json({ data: addFeedback(req.user.id, req.body || {}) });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 app.get("/mvp/demo-notification", (req, res) => {

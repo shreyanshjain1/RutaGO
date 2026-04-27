@@ -1,16 +1,13 @@
-# RutaGO Phase 1 / Phase 2 MVP
+# RutaGO Phase 1
 
-This folder contains the working RutaGO MVP: an Express backend, GTFS data support, Leaflet mobile frontend, optional PostgreSQL/PostGIS support, optional OpenTripPlanner support, and Capacitor mobile scaffolding.
+Phase 1 contains the current working RutaGO mobile-first PWA and Express backend.
 
-The latest upgrade adds a mobile-first PWA interface inspired by the RutaGO mockup, GPS-based route planning controls, stop reminders, route cards, stop search, and installable-app support.
-
----
-
-## Quick Run
+## Run Locally
 
 ```bash
 cd phase1/backend
 npm install
+cp .env.example .env
 npm run dev
 ```
 
@@ -20,122 +17,44 @@ Open:
 http://localhost:3000
 ```
 
----
+## Included in This Phase
 
-## What is Included
+- Leaflet map interface
+- GTFS route/stops APIs
+- Nearby stops
+- Direct and transfer route suggestions
+- Route overlays
+- Synthetic vehicle feed hook
+- PWA manifest and service worker
+- GPS stop reminders
+- Account registration/login
+- Saved favorite routes
+- Recent searches
+- Feedback/report issue form
 
-```txt
-backend/         Express API and web frontend
-backend/public/  Mobile UI, Leaflet app, PWA files
-backend/src/     Server, CSV store, DB store
-data/prepared/   Prepared GTFS files
-db/              PostgreSQL schema
-mobile/          Capacitor Android/iOS wrapper
-```
-
----
-
-## Main User Features
-
-- Splash screen
-- Login-style entry screen
-- Mobile app layout
-- Full-screen map
-- Use My Location
-- Tap map to set Start and End
-- Find jeepney routes
-- Direct route cards
-- Transfer suggestion cards
-- Nearby stop finder
-- Stop search
-- Add Stop Reminder
-- In-app and browser notification reminder
-- PWA install support
-
----
-
-## Main API Endpoints
+## Main Files
 
 ```txt
-GET /health
-GET /routes
-GET /stops
-GET /mvp/search?from=lat,lng&to=lat,lng
-GET /mvp/stops/nearest?lat=lat&lon=lng&radius=300
-GET /mvp/routes/:routeId/overlay
-GET /mvp/vehicles
-GET /plan?from=lat,lng&to=lat,lng
+backend/src/server.js       Express API
+backend/src/appStore.js     Local auth/favorites/feedback store
+backend/public/index.html   App screens
+backend/public/app.js       Frontend logic
+backend/public/style.css    Mobile RutaGO UI
 ```
 
-Cleaner aliases are also available:
+## Patch 1 Notes
+
+Patch 1 adds user-facing product memory:
+
+- account registration/login
+- favorites
+- recent searches
+- feedback reports
+
+The local app data file is generated at:
 
 ```txt
-GET /api/routes
-GET /api/stops
-GET /api/search
-GET /api/stops/nearest
-GET /api/routes/:routeId/overlay
-GET /api/vehicles
-GET /api/plan
+backend/data/app-store.json
 ```
 
----
-
-## Frontend Config
-
-Edit:
-
-```txt
-backend/public/rutago.config.js
-```
-
-```js
-window.RUTAGO_CONFIG = {
-  apiBaseUrl: "",
-  defaultCenter: [14.654, 121.064],
-  defaultZoom: 15,
-  reminderDistanceMeters: 150,
-  nearestStopRadiusMeters: 300
-};
-```
-
----
-
-## Mobile / Capacitor
-
-```bash
-cd phase1/mobile
-npm install
-npx cap sync android
-npx cap open android
-```
-
-Android permissions for GPS and notifications are already added to:
-
-```txt
-mobile/android/app/src/main/AndroidManifest.xml
-```
-
----
-
-## Do Not Commit
-
-The `.gitignore` excludes:
-
-```txt
-node_modules/
-backend/node_modules/
-mobile/node_modules/
-backend/.env
-mobile/android/app/build/
-```
-
----
-
-## Recommended Commit
-
-```bash
-git add .
-git commit -m "feat: upgrade RutaGO mobile PWA route experience"
-git push
-```
+It is ignored by git and should not be committed.

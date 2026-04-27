@@ -786,3 +786,90 @@ input:focus {
     font-size: 24px;
   }
 }
+
+/* Patch 1: account, favorites, recent searches, and feedback UI */
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-chip {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 2px solid #111;
+  background: #fff7d6;
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.16);
+}
+
+.auth-message {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #3f2a00;
+  text-align: center;
+}
+
+.auth-message[data-tone="error"] {
+  color: #a61b1b;
+}
+
+.drawer-danger {
+  margin-top: 12px;
+  background: #ffe2e2 !important;
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.favorite-card {
+  position: relative;
+}
+
+.favorite-card .remove-favorite {
+  margin-top: 10px;
+}
+
+.feedback-form {
+  display: grid;
+  gap: 12px;
+}
+
+.feedback-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  color: #332100;
+}
+
+.feedback-form input,
+.feedback-form select,
+.feedback-form textarea {
+  width: 100%;
+  border: 3px solid #111;
+  border-radius: 16px;
+  padding: 11px 12px;
+  font: inherit;
+  background: #fffdf2;
+  outline: none;
+  resize: vertical;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.12);
+}
+
+.feedback-form textarea:focus,
+.feedback-form input:focus,
+.feedback-form select:focus,
+.login-field input:focus {
+  border-color: #ff9f1c;
+}
