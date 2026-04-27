@@ -16,8 +16,34 @@ function apiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
 
-async function apiFetch(path, options) {
-  return fetch(apiUrl(path), options);
+function getAuthToken() {
+  return window.localStorage.getItem("rutago_auth_token") || "";
+}
+
+function getCurrentUser() {
+  try {
+    return JSON.parse(window.localStorage.getItem("rutago_user") || "null");
+  } catch (_error) {
+    return null;
+  }
+}
+
+function setAuthSession(token, user) {
+  window.localStorage.setItem("rutago_auth_token", token);
+  window.localStorage.setItem("rutago_user", JSON.stringify(user));
+}
+
+function clearAuthSession() {
+  window.localStorage.removeItem("rutago_auth_token");
+  window.localStorage.removeItem("rutago_user");
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  return fetch(apiUrl(path), { ...options, headers });
 }
 
 const elements = {
@@ -28,6 +54,11 @@ const elements = {
   loginForm: $("loginForm"),
   signupBtn: $("signupBtn"),
   nameInput: $("nameInput"),
+  emailInput: $("emailInput"),
+  passwordInput: $("passwordInput"),
+  authMessage: $("authMessage"),
+  userChip: $("userChip"),
+  logoutBtn: $("logoutBtn"),
   menuBtn: $("menuBtn"),
   closeDrawerBtn: $("closeDrawerBtn"),
   drawer: $("drawer"),
@@ -60,6 +91,20 @@ const elements = {
   healthCard: $("healthCard"),
   reloadHealthBtn: $("reloadHealthBtn"),
   networkStatus: $("networkStatus"),
+  favoritesList: $("favoritesList"),
+  recentSearchesList: $("recentSearchesList"),
+  feedbackForm: $("feedbackForm"),
+  feedbackType: $("feedbackType"),
+  feedbackRoute: $("feedbackRoute"),
+  feedbackStop: $("feedbackStop"),
+  feedbackMessage: $("feedbackMessage"),
+  feedbackList: $("feedbackList"),
+  dashboardMessage: $("dashboardMessage"),
+  adminGate: $("adminGate"),
+  adminSummary: $("adminSummary"),
+  adminFeedbackList: $("adminFeedbackList"),
+  adminRoutesList: $("adminRoutesList"),
+  reloadAdminBtn: $("reloadAdminBtn"),
   installToast: $("installToast"),
   installBtn: $("installBtn"),
   dismissInstallBtn: $("dismissInstallBtn"),
@@ -76,19 +121,22 @@ let mapClickMode = null;
 let destinationWatchId = null;
 let selectedReminderStop = null;
 let activeRouteId = null;
+let lastSelectedRoute = null;
 let deferredInstallPrompt = null;
 let allStopsCache = [];
+let dashboardCache = { favorites: [], recentSearches: [], feedback: [] };
 
 const routeColors = ["#f9d423", "#3b9a38", "#e64362", "#2e6bdc", "#ff8f1f", "#7b61ff"];
 
 function switchScreen(screenName) {
-  [elements.splashScreen, elements.loginScreen, elements.appScreen].forEach((screen) => {
-    screen.classList.remove("is-active");
-  });
+  [elements.splashScreen, elements.loginScreen, elements.appScreen].forEach((screen) => screen.classList.remove("is-active"));
   if (screenName === "login") elements.loginScreen.classList.add("is-active");
   if (screenName === "app") {
     elements.appScreen.classList.add("is-active");
-    setTimeout(() => map && map.invalidateSize(), 150);
+    setTimeout(() => {
+      ensureMap();
+      invalidateMapSafe();
+    }, 150);
   }
   if (screenName === "splash") elements.splashScreen.classList.add("is-active");
 }
@@ -101,6 +149,9 @@ function showPanel(panelId) {
   const panel = $(panelId);
   if (panel) panel.classList.add("is-active");
   closeDrawer();
+  if (panelId === "favoritesPanel" || panelId === "feedbackPanel") refreshDashboard();
+  if (panelId === "adminPanel") loadAdminCenter();
+  setTimeout(invalidateMapSafe, 80);
 }
 
 function openDrawer() {
@@ -142,11 +193,8 @@ function haversineMeters(aLat, aLon, bLat, bLon) {
   const dLon = toRad(bLon - aLon);
   const lat1 = toRad(aLat);
   const lat2 = toRad(bLat);
-  const x =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-  return R * c;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 function setSummary(message) {
@@ -207,7 +255,167 @@ function setMarker(kind, lat, lng, pan = true) {
   if (pan) map.setView([lat, lng], Math.max(map.getZoom(), 15));
 }
 
-function createRouteCard({ title, board, alight, meta, tags, color, stop, routeId }) {
+function renderUserState() {
+  const user = getCurrentUser();
+  if (elements.userChip) elements.userChip.textContent = user ? `👤 ${user.name}` : "Guest";
+}
+
+function authMessage(message, tone = "") {
+  if (!elements.authMessage) return;
+  elements.authMessage.textContent = message;
+  elements.authMessage.dataset.tone = tone;
+}
+
+async function handleAuth(mode) {
+  const name = elements.nameInput.value.trim() || "RutaGO User";
+  const email = elements.emailInput.value.trim();
+  const password = elements.passwordInput.value;
+  if (!email || !password) {
+    authMessage("Please enter email and password.", "error");
+    return;
+  }
+
+  authMessage(mode === "register" ? "Creating account..." : "Logging in...");
+  const resp = await apiFetch(mode === "register" ? "/api/auth/register" : "/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    authMessage(body.error || "Authentication failed.", "error");
+    return;
+  }
+  setAuthSession(body.token, body.user);
+  renderUserState();
+  await refreshDashboard();
+  switchScreen("app");
+  setTimeout(() => map.invalidateSize(), 200);
+}
+
+function requireAuthUi() {
+  if (!getAuthToken()) {
+    setSummary("Please login first to save favorites, recent searches, and feedback.");
+    return false;
+  }
+  return true;
+}
+
+async function refreshDashboard() {
+  if (!getAuthToken()) {
+    renderDashboardLists();
+    return;
+  }
+  const resp = await apiFetch("/api/me");
+  if (!resp.ok) {
+    clearAuthSession();
+    renderUserState();
+    renderDashboardLists();
+    return;
+  }
+  const body = await resp.json();
+  if (body.user) setAuthSession(getAuthToken(), body.user);
+  dashboardCache = {
+    favorites: body.favorites || [],
+    recentSearches: body.recentSearches || [],
+    feedback: body.feedback || [],
+  };
+  renderUserState();
+  renderDashboardLists();
+}
+
+function renderDashboardLists() {
+  const user = getCurrentUser();
+  if (elements.dashboardMessage) {
+    elements.dashboardMessage.textContent = user
+      ? `Signed in as ${user.name}. Your saved routes and reports sync to this local backend.`
+      : "Login to save favorite routes, view recent searches, and send route issue reports.";
+  }
+
+  if (elements.favoritesList) {
+    if (!dashboardCache.favorites.length) {
+      elements.favoritesList.innerHTML = `<div class="message-card small">No saved favorites yet. Search a route and tap Save Favorite.</div>`;
+    } else {
+      elements.favoritesList.innerHTML = "";
+      dashboardCache.favorites.forEach((item) => {
+        const card = document.createElement("article");
+        card.className = "stop-card favorite-card";
+        card.innerHTML = `
+          <div class="stop-card-title">⭐ ${item.title}</div>
+          <div class="stop-card-meta">${item.board_stop_name || "Start"} → ${item.alight_stop_name || "End"} · ${item.estimated_minutes || "?"} min</div>
+          <button class="mini-btn remove-favorite" data-id="${item.id}">Remove</button>
+        `;
+        elements.favoritesList.appendChild(card);
+      });
+      document.querySelectorAll(".remove-favorite").forEach((button) => {
+        button.addEventListener("click", async () => {
+          await apiFetch(`/api/users/me/favorites/${button.dataset.id}`, { method: "DELETE" });
+          await refreshDashboard();
+        });
+      });
+    }
+  }
+
+  if (elements.recentSearchesList) {
+    if (!dashboardCache.recentSearches.length) {
+      elements.recentSearchesList.innerHTML = `<div class="message-card small">No recent searches yet.</div>`;
+    } else {
+      elements.recentSearchesList.innerHTML = "";
+      dashboardCache.recentSearches.forEach((item) => {
+        const card = document.createElement("article");
+        card.className = "stop-card";
+        card.innerHTML = `
+          <div class="stop-card-title">🧭 ${item.direct_count} direct · ${item.transfer_count} transfer</div>
+          <div class="stop-card-meta">${item.origin} → ${item.destination}</div>
+        `;
+        card.addEventListener("click", () => {
+          elements.originInput.value = item.origin;
+          elements.destinationInput.value = item.destination;
+          const origin = parseLatLng(item.origin);
+          const destination = parseLatLng(item.destination);
+          if (origin) setMarker("origin", origin.lat, origin.lng, false);
+          if (destination) setMarker("destination", destination.lat, destination.lng, false);
+          showPanel("plannerPanel");
+          invalidateMapSafe();
+        });
+        elements.recentSearchesList.appendChild(card);
+      });
+    }
+  }
+
+  if (elements.feedbackList) {
+    if (!dashboardCache.feedback.length) {
+      elements.feedbackList.innerHTML = `<div class="message-card small">No feedback reports submitted yet.</div>`;
+    } else {
+      elements.feedbackList.innerHTML = "";
+      dashboardCache.feedback.forEach((item) => {
+        const card = document.createElement("article");
+        card.className = "stop-card";
+        card.innerHTML = `
+          <div class="stop-card-title">${item.type} · ${item.status}</div>
+          <div class="stop-card-meta">${item.message}</div>
+        `;
+        elements.feedbackList.appendChild(card);
+      });
+    }
+  }
+}
+
+async function saveFavorite(routeData) {
+  if (!requireAuthUi()) return;
+  const resp = await apiFetch("/api/users/me/favorites", {
+    method: "POST",
+    body: JSON.stringify(routeData),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setSummary(body.error || "Could not save favorite.");
+    return;
+  }
+  setSummary("Route saved to Favorites.");
+  await refreshDashboard();
+}
+
+function createRouteCard({ title, board, alight, meta, tags, color, stop, routeId, favoritePayload }) {
   const card = document.createElement("article");
   card.className = "route-card";
   card.style.setProperty("--route-color", color);
@@ -216,10 +424,27 @@ function createRouteCard({ title, board, alight, meta, tags, color, stop, routeI
     <div class="route-card-line"><span>Start<br>${board}</span><span>→</span><span>End<br>${alight}</span></div>
     <div class="route-card-meta">${meta}</div>
     <div class="route-tag-row">${tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}</div>
+    <div class="card-actions">
+      <button class="mini-btn select-reminder-btn" type="button">Reminder</button>
+      <button class="mini-btn save-favorite-btn" type="button">Save Favorite</button>
+    </div>
   `;
+  card.querySelector(".select-reminder-btn").addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectedReminderStop = stop;
+    activeRouteId = routeId || activeRouteId;
+    lastSelectedRoute = favoritePayload || null;
+    renderSelectedReminder();
+    showPanel("reminderPanel");
+  });
+  card.querySelector(".save-favorite-btn").addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await saveFavorite(favoritePayload || { route_id: routeId, title, board_stop_name: board, alight_stop_name: alight });
+  });
   card.addEventListener("click", () => {
     selectedReminderStop = stop;
     activeRouteId = routeId || activeRouteId;
+    lastSelectedRoute = favoritePayload || null;
     renderSelectedReminder();
     showPanel("reminderPanel");
   });
@@ -272,16 +497,24 @@ function renderSelectedReminder() {
 
 async function loadOverlay(routeId, color) {
   if (!routeId) return;
-  const resp = await apiFetch(`/mvp/routes/${encodeURIComponent(routeId)}/overlay`);
+  const resp = await apiFetch(`/api/routes/${encodeURIComponent(routeId)}/overlay`);
   if (!resp.ok) return;
   const body = await resp.json();
   if (!body.points || !body.points.length) return;
-
   const poly = L.polyline(
     body.points.map((p) => [p.lat, p.lon]),
     { color, weight: 6, opacity: 0.9, lineCap: "round", lineJoin: "round", dashArray: "8 6" }
   );
   poly.addTo(routeLayer);
+}
+
+async function recordRecentSearch(origin, destination, directs, transfers) {
+  if (!getAuthToken()) return;
+  await apiFetch("/api/users/me/recent-searches", {
+    method: "POST",
+    body: JSON.stringify({ origin, destination, direct_count: directs.length, transfer_count: transfers.length }),
+  }).catch(() => {});
+  await refreshDashboard();
 }
 
 async function searchRoutes() {
@@ -300,10 +533,7 @@ async function searchRoutes() {
   setSummary("Searching jeepney routes and transfer suggestions...");
   showPanel("plannerPanel");
 
-  const resp = await apiFetch(
-    `/mvp/search?from=${encodeURIComponent(elements.originInput.value)}&to=${encodeURIComponent(elements.destinationInput.value)}`
-  );
-
+  const resp = await apiFetch(`/api/search?from=${encodeURIComponent(elements.originInput.value)}&to=${encodeURIComponent(elements.destinationInput.value)}`);
   if (!resp.ok) {
     setSummary("Search failed. Check if the backend is running, then try again.");
     showPanel("routesPanel");
@@ -314,6 +544,7 @@ async function searchRoutes() {
   const directs = body.direct_options || [];
   const transfers = body.transfer_options || [];
   activeRouteId = directs[0]?.route_id || transfers[0]?.first_route_id || transfers[0]?.second_route_id || null;
+  await recordRecentSearch(elements.originInput.value, elements.destinationInput.value, directs, transfers);
 
   setSummary(`Found ${directs.length} direct route(s) and ${transfers.length} transfer option(s). Tap a card to add a stop reminder.`);
 
@@ -323,6 +554,15 @@ async function searchRoutes() {
     elements.directResults.innerHTML = "";
     directs.slice(0, 5).forEach((option, index) => {
       const color = routeColor(index);
+      const favoritePayload = {
+        route_id: option.route_id,
+        title: option.route_name,
+        route_name: option.route_name,
+        board_stop_name: option.board_stop.stop_name,
+        alight_stop_name: option.alight_stop.stop_name,
+        estimated_minutes: option.estimated_minutes,
+        transfers: 0,
+      };
       elements.directResults.appendChild(createRouteCard({
         title: option.route_name,
         board: option.board_stop.stop_name,
@@ -332,6 +572,7 @@ async function searchRoutes() {
         color,
         stop: option.alight_stop,
         routeId: option.route_id,
+        favoritePayload,
       }));
       loadOverlay(option.route_id, color);
     });
@@ -343,6 +584,15 @@ async function searchRoutes() {
     elements.transferResults.innerHTML = "";
     transfers.slice(0, 5).forEach((option, index) => {
       const color = routeColor(index + 2);
+      const favoritePayload = {
+        route_id: option.first_route_id,
+        title: `${option.first_route_name} → ${option.second_route_name}`,
+        route_name: `${option.first_route_name} → ${option.second_route_name}`,
+        board_stop_name: option.board_stop.stop_name,
+        alight_stop_name: option.alight_stop.stop_name,
+        estimated_minutes: option.estimated_minutes,
+        transfers: 1,
+      };
       elements.transferResults.appendChild(createRouteCard({
         title: `${option.first_route_name} → ${option.second_route_name}`,
         board: option.board_stop.stop_name,
@@ -352,6 +602,7 @@ async function searchRoutes() {
         color,
         stop: option.alight_stop,
         routeId: option.first_route_id,
+        favoritePayload,
       }));
       loadOverlay(option.first_route_id, color);
       loadOverlay(option.second_route_id, routeColor(index + 3));
@@ -376,9 +627,8 @@ function vehicleBadgeTone(lastSeenAt) {
 async function loadVehicleFeed(routeId = null) {
   vehicleLayer.clearLayers();
   elements.vehicleResults.innerHTML = "";
-
   const query = routeId ? `?route_id=${encodeURIComponent(routeId)}&limit=3` : "?limit=8";
-  const resp = await apiFetch(`/mvp/vehicles${query}`);
+  const resp = await apiFetch(`/api/vehicles${query}`);
   if (!resp.ok) {
     elements.vehicleSummary.textContent = "Vehicle feed is unavailable right now.";
     showEmpty(elements.vehicleResults, "No vehicle snapshots available.");
@@ -393,9 +643,7 @@ async function loadVehicleFeed(routeId = null) {
     return;
   }
 
-  elements.vehicleSummary.textContent = routeId
-    ? `Showing ${vehicles.length} synthetic vehicle snapshot(s) for the selected route.`
-    : `Showing ${vehicles.length} synthetic vehicle snapshot(s).`;
+  elements.vehicleSummary.textContent = routeId ? `Showing ${vehicles.length} synthetic vehicle snapshot(s) for the selected route.` : `Showing ${vehicles.length} synthetic vehicle snapshot(s).`;
 
   vehicles.forEach((vehicle, index) => {
     const color = routeColor(index);
@@ -406,13 +654,9 @@ async function loadVehicleFeed(routeId = null) {
       meta: `${vehicle.speed_kph.toFixed(1)} kph · heading ${vehicle.heading}° · ${vehicleBadgeTone(vehicle.last_seen_at)}`,
       tags: ["Live hook", new Date(vehicle.last_seen_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })],
       color,
-      stop: {
-        stop_id: vehicle.next_stop,
-        stop_name: vehicle.next_stop,
-        stop_lat: vehicle.lat,
-        stop_lon: vehicle.lon,
-      },
+      stop: { stop_id: vehicle.next_stop, stop_name: vehicle.next_stop, stop_lat: vehicle.lat, stop_lon: vehicle.lon },
       routeId: vehicle.route_id,
+      favoritePayload: { route_id: vehicle.route_id, title: vehicle.route_name, route_name: vehicle.route_name, alight_stop_name: vehicle.next_stop },
     });
     elements.vehicleResults.appendChild(card);
 
@@ -436,7 +680,7 @@ async function loadNearestStops() {
     return;
   }
 
-  const resp = await apiFetch(`/mvp/stops/nearest?lat=${from.lat}&lon=${from.lng}&radius=${NEAREST_STOP_RADIUS_METERS}`);
+  const resp = await apiFetch(`/api/stops/nearest?lat=${from.lat}&lon=${from.lng}&radius=${NEAREST_STOP_RADIUS_METERS}`);
   if (!resp.ok) {
     setSummary("Nearest stop lookup failed.");
     showPanel("stopsPanel");
@@ -464,15 +708,13 @@ async function loadNearestStops() {
     }).bindPopup(`${stop.stop_name}<br>${fmtMeters(stop.distance_m)}`).addTo(nearestLayer);
   });
 
-  if (nearestLayer.getLayers().length) {
-    map.fitBounds(nearestLayer.getBounds(), { padding: [30, 260] });
-  }
+  if (nearestLayer.getLayers().length) map.fitBounds(nearestLayer.getBounds(), { padding: [30, 260] });
   showPanel("stopsPanel");
 }
 
 async function loadStopsCache() {
   if (allStopsCache.length) return allStopsCache;
-  const resp = await apiFetch("/stops");
+  const resp = await apiFetch("/api/stops");
   if (!resp.ok) return [];
   const body = await resp.json();
   allStopsCache = body.data || [];
@@ -489,16 +731,9 @@ async function searchStops() {
   }
 
   const stops = await loadStopsCache();
-  const matches = stops
-    .filter((stop) => [stop.stop_name, stop.stop_id].join(" ").toLowerCase().includes(query))
-    .slice(0, 12);
-
-  if (!matches.length) {
-    showEmpty(elements.stopSearchResults, "No matching stops found.");
-  } else {
-    matches.forEach((stop) => elements.stopSearchResults.appendChild(createStopCard(stop, "Search result")));
-  }
-
+  const matches = stops.filter((stop) => [stop.stop_name, stop.stop_id].join(" ").toLowerCase().includes(query)).slice(0, 12);
+  if (!matches.length) showEmpty(elements.stopSearchResults, "No matching stops found.");
+  else matches.forEach((stop) => elements.stopSearchResults.appendChild(createStopCard(stop, "Search result")));
   showPanel("stopsPanel");
 }
 
@@ -515,13 +750,7 @@ function locateUser() {
       const lng = position.coords.longitude;
       setMarker("origin", lat, lng);
       if (userMarker) map.removeLayer(userMarker);
-      userMarker = L.circleMarker([lat, lng], {
-        radius: 9,
-        color: "#111",
-        weight: 3,
-        fillColor: "#4da3ff",
-        fillOpacity: 0.9,
-      }).bindPopup("You are here").addTo(map);
+      userMarker = L.circleMarker([lat, lng], { radius: 9, color: "#111", weight: 3, fillColor: "#4da3ff", fillOpacity: 0.9 }).bindPopup("You are here").addTo(map);
       map.setView([lat, lng], 16);
       setSummary("Current location loaded into Start.");
     },
@@ -545,11 +774,7 @@ async function startApproachAlert() {
 
   const permission = await requestNotificationPermission();
   elements.reminderStatus.textContent = "Watching GPS";
-  showNotificationBanner(
-    "Reminder added",
-    `RutaGO will alert you near ${selectedReminderStop.stop_name}. Keep this app open while riding.`,
-    "info"
-  );
+  showNotificationBanner("Reminder added", `RutaGO will alert you near ${selectedReminderStop.stop_name}. Keep this app open while riding.`, "info");
 
   if (!navigator.geolocation) {
     showNotificationBanner("GPS unavailable", "Your browser does not support location tracking.", "warning");
@@ -557,24 +782,15 @@ async function startApproachAlert() {
   }
 
   if (destinationWatchId) navigator.geolocation.clearWatch(destinationWatchId);
-
   destinationWatchId = navigator.geolocation.watchPosition(
     (position) => {
-      const d = haversineMeters(
-        position.coords.latitude,
-        position.coords.longitude,
-        selectedReminderStop.stop_lat,
-        selectedReminderStop.stop_lon
-      );
+      const d = haversineMeters(position.coords.latitude, position.coords.longitude, selectedReminderStop.stop_lat, selectedReminderStop.stop_lon);
       elements.reminderStatus.textContent = `${fmtMeters(d)} away`;
       elements.selectedReminderCard.innerHTML = `<strong>${selectedReminderStop.stop_name}</strong><br>${fmtMeters(d)} away from your reminder stop.`;
-
       if (d <= REMINDER_DISTANCE_METERS) {
         const title = "Reminder!";
         const body = "You are now near your added stop. You may ask the driver and go down.";
-        if (typeof Notification !== "undefined" && permission === "granted") {
-          new Notification(title, { body, icon: "./icons/rutago-icon.svg" });
-        }
+        if (typeof Notification !== "undefined" && permission === "granted") new Notification(title, { body, icon: "./icons/rutago-icon.svg" });
         showNotificationBanner(title, body, "success");
         elements.reminderStatus.textContent = "Arriving";
         if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
@@ -591,6 +807,7 @@ function endRoute() {
   if (destinationWatchId) navigator.geolocation.clearWatch(destinationWatchId);
   destinationWatchId = null;
   selectedReminderStop = null;
+  lastSelectedRoute = null;
   clearNotificationBanner();
   renderSelectedReminder();
   elements.reminderStatus.textContent = "Ended";
@@ -604,55 +821,221 @@ async function loadHealth() {
     if (!resp.ok) throw new Error("Health endpoint unavailable");
     const body = await resp.json();
     setNetworkStatus("Online", "online");
-    elements.healthCard.innerHTML = `
-      <strong>Backend online</strong><br>
-      Data source: ${body.data_source}<br>
-      Routes: ${body.routes} · Stops: ${body.stops}<br>
-      Trips: ${body.trips} · Stop times: ${body.stop_times}
-    `;
-  } catch (error) {
+    elements.healthCard.innerHTML = `<strong>Backend online</strong><br>Data source: ${body.data_source}<br>Routes: ${body.routes} · Stops: ${body.stops}<br>Trips: ${body.trips} · Stop times: ${body.stop_times}`;
+  } catch (_error) {
     setNetworkStatus("Offline", "offline");
     elements.healthCard.innerHTML = `<strong>Backend offline</strong><br>Run the Express backend and reload the app.`;
   }
 }
 
+async function submitFeedback(event) {
+  event.preventDefault();
+  if (!requireAuthUi()) return;
+  const resp = await apiFetch("/api/feedback", {
+    method: "POST",
+    body: JSON.stringify({
+      type: elements.feedbackType.value,
+      route_id: elements.feedbackRoute.value.trim(),
+      stop_id: elements.feedbackStop.value.trim(),
+      message: elements.feedbackMessage.value.trim(),
+    }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setSummary(body.error || "Could not submit feedback.");
+    return;
+  }
+  elements.feedbackMessage.value = "";
+  setSummary("Feedback submitted. Thank you for improving RutaGO.");
+  await refreshDashboard();
+}
+
+function invalidateMapSafe() {
+  if (!map) return;
+  requestAnimationFrame(() => {
+    map.invalidateSize({ pan: false });
+  });
+}
+
+function ensureMap() {
+  if (map) {
+    invalidateMapSafe();
+    return map;
+  }
+  return initMap();
+}
+
+function showMapLoading(message) {
+  const shell = document.querySelector(".map-shell");
+  if (!shell) return;
+  let card = document.getElementById("mapLoadingCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "mapLoadingCard";
+    card.className = "map-loading-card";
+    shell.appendChild(card);
+  }
+  card.textContent = message;
+  card.hidden = false;
+}
+
+function hideMapLoading() {
+  const card = document.getElementById("mapLoadingCard");
+  if (card) card.hidden = true;
+}
+
+
+async function loadAdminCenter() {
+  if (!elements.adminGate || !elements.adminSummary || !elements.adminFeedbackList || !elements.adminRoutesList) return;
+
+  const user = getCurrentUser();
+  if (!user || user.role !== "admin") {
+    elements.adminGate.innerHTML = "Admin access requires a signed-in admin account. Add your email to <code>ADMIN_EMAILS</code> in <code>.env</code>, restart the backend, then create/login with that email.";
+    elements.adminSummary.innerHTML = "";
+    showEmpty(elements.adminFeedbackList, "No admin data loaded.");
+    showEmpty(elements.adminRoutesList, "No route snapshot loaded.");
+    return;
+  }
+
+  elements.adminGate.textContent = `Signed in as admin: ${user.email}`;
+  elements.adminSummary.innerHTML = "";
+  elements.adminFeedbackList.innerHTML = "";
+  elements.adminRoutesList.innerHTML = "";
+
+  const [summaryResp, feedbackResp, routesResp] = await Promise.all([
+    apiFetch("/api/admin/summary"),
+    apiFetch("/api/admin/feedback"),
+    apiFetch("/api/admin/routes-summary"),
+  ]);
+
+  if (!summaryResp.ok || !feedbackResp.ok || !routesResp.ok) {
+    elements.adminGate.textContent = "Admin data could not be loaded. Check your account role and backend logs.";
+    return;
+  }
+
+  const summary = await summaryResp.json();
+  const feedback = await feedbackResp.json();
+  const routeSnapshot = await routesResp.json();
+  const stats = [
+    [summary.app.users, "Users"],
+    [summary.app.feedback_open, "Open reports"],
+    [summary.transit.routes, "GTFS routes"],
+    [summary.transit.stops, "GTFS stops"],
+  ];
+  elements.adminSummary.innerHTML = stats.map(([value, label]) => `<div class="admin-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+  if (!feedback.data.length) {
+    showEmpty(elements.adminFeedbackList, "No feedback reports yet.");
+  } else {
+    feedback.data.slice(0, 12).forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "stop-card";
+      card.innerHTML = `
+        <div class="stop-card-title">${item.type || "general"} · ${item.status}</div>
+        <div class="stop-card-meta">${item.message}</div>
+        <div class="stop-card-meta">${item.user_name} ${item.route_id ? `· Route ${item.route_id}` : ""} ${item.stop_id ? `· Stop ${item.stop_id}` : ""}</div>
+        <div class="admin-actions">
+          <button class="mini-btn admin-status" data-id="${item.id}" data-status="reviewing">Reviewing</button>
+          <button class="mini-btn admin-status" data-id="${item.id}" data-status="resolved">Resolved</button>
+          <button class="mini-btn admin-status" data-id="${item.id}" data-status="dismissed">Dismiss</button>
+        </div>
+      `;
+      elements.adminFeedbackList.appendChild(card);
+    });
+  }
+
+  routeSnapshot.data.slice(0, 12).forEach((route) => {
+    const card = document.createElement("article");
+    card.className = "route-card";
+    card.style.setProperty("--route-color", "#ffbd4a");
+    card.innerHTML = `
+      <div class="route-card-title">${route.route_short_name || route.route_id}</div>
+      <div class="route-card-meta">${route.route_long_name || "No route name"}</div>
+      <div class="route-card-line"><span>${route.first_stop || "Start"}</span><span>→</span><span>${route.last_stop || "End"}</span></div>
+      <div class="route-tag-row"><span class="status-pill">${route.stop_count} stops</span></div>
+    `;
+    elements.adminRoutesList.appendChild(card);
+  });
+
+  document.querySelectorAll(".admin-status").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await apiFetch(`/api/admin/feedback/${button.dataset.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: button.dataset.status }),
+      });
+      await loadAdminCenter();
+    });
+  });
+}
+
 function initMap() {
-  map = L.map("map", { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+  const mapElement = $("map");
+  if (!mapElement) return null;
+
+  map = L.map("map", {
+    zoomControl: false,
+    preferCanvas: true,
+    inertia: true,
+    maxBoundsViscosity: 0.6,
+  }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
   L.control.zoom({ position: "bottomright" }).addTo(map);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
+    minZoom: 11,
     attribution: "© OpenStreetMap contributors",
+    crossOrigin: true,
+    updateWhenIdle: true,
+    keepBuffer: 4,
   }).addTo(map);
+
+  showMapLoading("Loading map tiles…");
+  tileLayer.on("load", hideMapLoading);
+  tileLayer.on("tileerror", () => showMapLoading("Map tiles are having trouble loading. Check internet connection, then reload."));
 
   nearestLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
   vehicleLayer = L.layerGroup().addTo(map);
 
-  setMarker("origin", 14.6535, 121.049, false);
-  setMarker("destination", 14.5995, 120.984, false);
+  const defaultOrigin = CONFIG.defaultOrigin || [14.6535, 121.049];
+  const defaultDestination = CONFIG.defaultDestination || [14.6547, 121.0648];
+  setMarker("origin", defaultOrigin[0], defaultOrigin[1], false);
+  setMarker("destination", defaultDestination[0], defaultDestination[1], false);
+  map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
 
   map.on("click", (e) => {
     if (!mapClickMode) return;
     setMarker(mapClickMode, e.latlng.lat, e.latlng.lng, false);
     setMapMode(`${mapClickMode === "origin" ? "Start" : "End"} selected. You can find routes now.`);
     mapClickMode = null;
+    invalidateMapSafe();
   });
+
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(() => invalidateMapSafe());
+    observer.observe(mapElement);
+    const app = $("appScreen");
+    if (app) observer.observe(app);
+  }
+
+  window.addEventListener("resize", invalidateMapSafe);
+  window.addEventListener("orientationchange", () => setTimeout(invalidateMapSafe, 250));
+
+  setTimeout(invalidateMapSafe, 100);
+  setTimeout(invalidateMapSafe, 500);
+  return map;
 }
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-  });
+  window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(() => {}));
 }
 
 function setupInstallPrompt() {
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
-    if (window.localStorage.getItem("rutago_install_dismissed") !== "1") {
-      elements.installToast.hidden = false;
-    }
+    if (window.localStorage.getItem("rutago_install_dismissed") !== "1") elements.installToast.hidden = false;
   });
 
   elements.installBtn.addEventListener("click", async () => {
@@ -671,30 +1054,37 @@ function setupInstallPrompt() {
 
 function bindEvents() {
   elements.startAppBtn.addEventListener("click", () => switchScreen("login"));
-  elements.signupBtn.addEventListener("click", () => {
-    elements.nameInput.value = elements.nameInput.value || "RutaGO User";
-    switchScreen("app");
-  });
+  elements.signupBtn.addEventListener("click", () => handleAuth("register"));
   elements.loginForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    switchScreen("app");
-    setTimeout(() => map.invalidateSize(), 200);
+    handleAuth("login");
+  });
+  elements.logoutBtn.addEventListener("click", () => {
+    clearAuthSession();
+    dashboardCache = { favorites: [], recentSearches: [], feedback: [] };
+    renderUserState();
+    renderDashboardLists();
+    switchScreen("login");
   });
 
   elements.menuBtn.addEventListener("click", openDrawer);
   elements.closeDrawerBtn.addEventListener("click", closeDrawer);
   elements.drawerOverlay.addEventListener("click", closeDrawer);
-  document.querySelectorAll(".drawer-link").forEach((button) => {
-    button.addEventListener("click", () => showPanel(button.dataset.panel));
-  });
+  document.querySelectorAll(".drawer-link").forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.panel)));
 
   elements.locateBtn.addEventListener("click", locateUser);
-  elements.centerUpBtn.addEventListener("click", () => map.setView(DEFAULT_CENTER, DEFAULT_ZOOM));
+  elements.centerUpBtn.addEventListener("click", () => {
+    ensureMap();
+    map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    invalidateMapSafe();
+  });
   elements.setOriginBtn.addEventListener("click", () => {
+    ensureMap();
     mapClickMode = "origin";
     setMapMode("Tap the map to set Start");
   });
   elements.setDestinationBtn.addEventListener("click", () => {
+    ensureMap();
     mapClickMode = "destination";
     setMapMode("Tap the map to set End");
   });
@@ -709,13 +1099,17 @@ function bindEvents() {
   elements.addReminderBtn.addEventListener("click", startApproachAlert);
   elements.endRouteBtn.addEventListener("click", endRoute);
   elements.reloadHealthBtn.addEventListener("click", loadHealth);
+  elements.feedbackForm.addEventListener("submit", submitFeedback);
+  if (elements.reloadAdminBtn) elements.reloadAdminBtn.addEventListener("click", loadAdminCenter);
 }
 
-initMap();
+
 bindEvents();
 registerServiceWorker();
 setupInstallPrompt();
 loadHealth();
+renderUserState();
+refreshDashboard();
 renderSelectedReminder();
 setSummary("Welcome to RutaGO. Set your route and tap Find Routes.");
 setMapMode("Tap Origin or Destination below");

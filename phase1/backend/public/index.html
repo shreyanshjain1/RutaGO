@@ -54,6 +54,10 @@
           <input id="nameInput" type="text" autocomplete="name" placeholder="Name" />
         </label>
         <label class="login-field">
+          <span class="field-icon">✉️</span>
+          <input id="emailInput" type="email" autocomplete="email" placeholder="Email" />
+        </label>
+        <label class="login-field">
           <span class="field-icon">🔒</span>
           <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Password" />
         </label>
@@ -61,6 +65,7 @@
           <button type="button" id="signupBtn" class="auth-chip">SIGN UP</button>
           <button type="submit" class="auth-chip auth-chip-dark">LOGIN</button>
         </div>
+        <p id="authMessage" class="auth-message">Create an account or login to save favorites, reports, and recent searches.</p>
       </form>
       <div class="road-scene login-road">
         <span class="road-marker marker-one"></span>
@@ -76,7 +81,10 @@
           <div class="brand-title">RUTA GO</div>
           <div class="brand-subtitle">UP Diliman Jeepney Guide</div>
         </div>
-        <button id="locateBtn" class="location-button" aria-label="Use my location">📍</button>
+        <div class="top-actions">
+          <span id="userChip" class="user-chip">Guest</span>
+          <button id="locateBtn" class="location-button" aria-label="Use my location">📍</button>
+        </div>
       </header>
 
       <aside id="drawer" class="drawer" aria-hidden="true">
@@ -88,7 +96,11 @@
         <button class="drawer-link" data-panel="routesPanel">🚍 Route Cards</button>
         <button class="drawer-link" data-panel="stopsPanel">📌 Stop List</button>
         <button class="drawer-link" data-panel="reminderPanel">🔔 Stop Reminder</button>
+        <button class="drawer-link" data-panel="favoritesPanel">⭐ Favorites</button>
+        <button class="drawer-link" data-panel="feedbackPanel">📝 Report Issue</button>
+        <button class="drawer-link" data-panel="adminPanel">🛠️ Admin Center</button>
         <button class="drawer-link" data-panel="statusPanel">⚙️ App Status</button>
+        <button id="logoutBtn" class="drawer-link drawer-danger" type="button">🚪 Logout</button>
         <div class="drawer-note">
           Tap the map to set origin/destination, then find a jeepney route.
         </div>
@@ -184,6 +196,78 @@
           <div id="selectedReminderCard" class="message-card">Select a route card or stop, then tap Add Stop Reminder.</div>
           <button id="addReminderBtn" class="primary-pill full-width">Add Stop Reminder</button>
           <button id="endRouteBtn" class="secondary-pill full-width">End Route</button>
+        </section>
+
+
+        <section id="favoritesPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Saved commuter shortcuts</p>
+              <h2>Favorites & Recent</h2>
+            </div>
+            <span class="status-pill">Account</span>
+          </div>
+          <div id="dashboardMessage" class="message-card small">Login to save favorite routes and recent searches.</div>
+          <div class="section-label">Favorite Routes</div>
+          <div id="favoritesList" class="route-stack"></div>
+          <div class="section-label">Recent Searches</div>
+          <div id="recentSearchesList" class="route-stack"></div>
+        </section>
+
+        <section id="feedbackPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Help improve route data</p>
+              <h2>Report Issue</h2>
+            </div>
+            <span class="status-pill">Beta</span>
+          </div>
+          <form id="feedbackForm" class="feedback-form">
+            <label>
+              <span>Report type</span>
+              <select id="feedbackType">
+                <option value="wrong_stop">Wrong stop</option>
+                <option value="missing_route">Missing route</option>
+                <option value="wrong_hours">Incorrect operating hours</option>
+                <option value="gps_issue">GPS issue</option>
+                <option value="general">General feedback</option>
+              </select>
+            </label>
+            <div class="coordinate-grid">
+              <label>
+                <span>Route ID optional</span>
+                <input id="feedbackRoute" placeholder="Example: IKOT" />
+              </label>
+              <label>
+                <span>Stop ID optional</span>
+                <input id="feedbackStop" placeholder="Example: stop_001" />
+              </label>
+            </div>
+            <label>
+              <span>Message</span>
+              <textarea id="feedbackMessage" rows="4" placeholder="Tell the maintainers what needs to be fixed..."></textarea>
+            </label>
+            <button class="primary-pill full-width" type="submit">Submit Report</button>
+          </form>
+          <div class="section-label">My Submitted Reports</div>
+          <div id="feedbackList" class="route-stack"></div>
+        </section>
+
+
+        <section id="adminPanel" class="panel">
+          <div class="panel-title-row compact">
+            <div>
+              <p class="panel-kicker">Route operations</p>
+              <h2>Admin Center</h2>
+            </div>
+            <button id="reloadAdminBtn" class="mini-btn">Reload</button>
+          </div>
+          <div id="adminGate" class="message-card small">Admin access requires your email to be listed in <code>ADMIN_EMAILS</code>.</div>
+          <div id="adminSummary" class="admin-grid"></div>
+          <div class="section-label">Open Feedback Reports</div>
+          <div id="adminFeedbackList" class="route-stack"></div>
+          <div class="section-label">Route Data Snapshot</div>
+          <div id="adminRoutesList" class="route-stack"></div>
         </section>
 
         <section id="statusPanel" class="panel">

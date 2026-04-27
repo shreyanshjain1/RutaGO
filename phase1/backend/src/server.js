@@ -2,6 +2,21 @@ const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const {
+  publicUser,
+  requireUser,
+  requireAdmin,
+  registerUser,
+  loginUser,
+  getDashboard,
+  addFavorite,
+  deleteFavorite,
+  addRecentSearch,
+  addFeedback,
+  listAllFeedback,
+  updateFeedbackStatus,
+  getStoreStats,
+} = require("./appStore");
 
 const {
   loadRoutes,
@@ -744,6 +759,108 @@ app.get("/api/stops", (req, res) => {
 app.get("/api/plan", (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
   res.redirect(307, `/plan${qs ? `?${qs}` : ""}`);
+});
+
+
+app.post("/api/auth/register", (req, res) => {
+  try {
+    const result = registerUser(req.body || {});
+    return res.status(201).json(result);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/auth/login", (req, res) => {
+  try {
+    const result = loginUser(req.body || {});
+    return res.json(result);
+  } catch (err) {
+    return res.status(401).json({ error: err.message });
+  }
+});
+
+app.get("/api/me", requireUser, (req, res) => {
+  return res.json({ user: publicUser(req.user), ...getDashboard(req.user.id) });
+});
+
+app.get("/api/users/me/favorites", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).favorites });
+});
+
+app.post("/api/users/me/favorites", requireUser, (req, res) => {
+  try {
+    return res.status(201).json({ data: addFavorite(req.user.id, req.body || {}) });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/users/me/favorites/:favoriteId", requireUser, (req, res) => {
+  const deleted = deleteFavorite(req.user.id, req.params.favoriteId);
+  return res.json({ ok: deleted });
+});
+
+app.get("/api/users/me/recent-searches", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).recentSearches });
+});
+
+app.post("/api/users/me/recent-searches", requireUser, (req, res) => {
+  return res.status(201).json({ data: addRecentSearch(req.user.id, req.body || {}) });
+});
+
+app.get("/api/users/me/feedback", requireUser, (req, res) => {
+  return res.json({ data: getDashboard(req.user.id).feedback });
+});
+
+app.post("/api/feedback", requireUser, (req, res) => {
+  try {
+    return res.status(201).json({ data: addFeedback(req.user.id, req.body || {}) });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+
+app.get("/api/admin/summary", requireAdmin, (_req, res) => {
+  return res.json({
+    app: getStoreStats(),
+    transit: {
+      data_source: dataSource,
+      routes: routes.length,
+      stops: stops.length,
+      trips: trips.length,
+      stop_times: stopTimes.length,
+    },
+  });
+});
+
+app.get("/api/admin/feedback", requireAdmin, (_req, res) => {
+  return res.json({ data: listAllFeedback() });
+});
+
+app.patch("/api/admin/feedback/:feedbackId/status", requireAdmin, (req, res) => {
+  try {
+    const data = updateFeedbackStatus(req.params.feedbackId, req.body?.status);
+    return res.json({ data });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/routes-summary", requireAdmin, (_req, res) => {
+  const data = routes.slice(0, 80).map((route) => {
+    const sequence = routeToRepresentativeStops.get(route.route_id) || [];
+    return {
+      route_id: route.route_id,
+      route_short_name: route.route_short_name,
+      route_long_name: route.route_long_name,
+      stop_count: sequence.length,
+      first_stop: stopById.get(sequence[0])?.stop_name || "",
+      last_stop: stopById.get(sequence[sequence.length - 1])?.stop_name || "",
+    };
+  });
+  return res.json({ count: data.length, data });
 });
 
 app.get("/mvp/demo-notification", (req, res) => {
